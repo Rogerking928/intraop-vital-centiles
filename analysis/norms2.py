@@ -29,8 +29,8 @@ for v in M:
             r = {'metric': v, 'sex': s, 'age': int(a), **{f'P{int(round(q*100))}': pr.at[a, q] for q in pr.columns}}
             rows.append(r)
             if a % 10 == 0: dec.append(r)
-pd.DataFrame(rows).to_csv(f'{P}/out/norms2_table.csv', index=False, float_format='%.2f')
-pd.DataFrame(dec).to_csv(f'{P}/out/norms2_dec.csv', index=False, float_format='%.2f')
+pd.DataFrame(rows).to_csv(f'{P}/out/norms2_table.csv', index=False, float_format='%.12g')
+pd.DataFrame(dec).to_csv(f'{P}/out/norms2_dec.csv', index=False, float_format='%.12g')
 
 qs = [round(x, 3) for x in np.arange(0.005, 0.9951, 0.005)]
 MID = {'18-29': 24, '30-39': 35, '40-49': 45, '50-59': 55, '60-69': 65, '70-79': 75, '80-90': 85}
@@ -48,7 +48,7 @@ e = ref.groupby(['sex', 'band'], observed=True).agg(
     pct_full_sust5_lt65=('full_sust5', lambda x: 100 * (x < 65).mean()),
     pct_full_min1_lt65=('full_min1', lambda x: 100 * (x < 65).mean())).reset_index()
 t = t.merge(e, on=['sex', 'band'])
-t.to_csv(f'{P}/out/threshold2.csv', index=False, float_format='%.2f')
+t.to_csv(f'{P}/out/threshold2.csv', index=False, float_format='%.12g')
 import json
 json.dump({'pct_sust5_lt65': 100 * float((ref.maint_sust5 < 65).mean()), 'n': int(len(ref))},
           open(f'{P}/out/threshold2_overall.json', 'w'), indent=1)

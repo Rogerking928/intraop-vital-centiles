@@ -32,7 +32,7 @@ for v in V:
         pr = predict(m, AGES)
         for a in AGES:
             rows.append({'var': v, 'sex': s, 'age': int(a), **{f'P{int(round(q*100))}': pr.at[a, q] for q in pr.columns}})
-pd.DataFrame(rows).to_csv(f'{P}/out/norms_table_nodrug.csv', index=False, float_format='%.4f')
+pd.DataFrame(rows).to_csv(f'{P}/out/norms_table_nodrug.csv', index=False, float_format='%.12g')
 
 # ---- B：未排序的預測有沒有交叉
 cross = {}
@@ -74,7 +74,7 @@ for v in V:
             r[f'below_P{int(round(q*100))}'] = 100 * float((d.loc[B, v] < c).mean())
         r['mean_abs_error'] = float(np.mean([abs(r[f'below_P{int(round(q*100))}'] - 100 * q) for q in QS]))
         rec.append(r)
-pd.DataFrame(rec).to_csv(f'{P}/out/recalibration.csv', index=False, float_format='%.5f')
+pd.DataFrame(rec).to_csv(f'{P}/out/recalibration.csv', index=False, float_format='%.12g')
 
 # ---- D：VitalDB 分層
 vc = pd.read_csv(f'{VD}/cases.csv').set_index('caseid')
@@ -96,7 +96,7 @@ for v in ['nibp_map', 'hr', 'etco2']:
             if len(g) < 30: continue
             st.append({'var': v, 'stratum': lab, 'level': str(lvl), 'n': len(g),
                        'below_P50': 100 * float(hit.loc[g.index, 0.5].mean()), 'median_shift': float(np.median(res[g.index]))})
-pd.DataFrame(st).to_csv(f'{P}/out/validation_strata2.csv', index=False, float_format='%.4f')
+pd.DataFrame(st).to_csv(f'{P}/out/validation_strata2.csv', index=False, float_format='%.12g')
 
 # ---- E：MOVER 共變項
 con = duckdb.connect()
@@ -115,7 +115,7 @@ for v in ['nibp_map', 'hr', 'etco2']:
             cov.append({'var': v, 'centile': int(round(q * 100)), 'term': lab, 'coef': m.params[term],
                         'lo': ci.loc[term, 0], 'hi': ci.loc[term, 1], 'n': len(d)})
 covdf = pd.DataFrame(cov)
-covdf.to_csv(f'{P}/out/covariates_qr.csv', index=False, float_format='%.5f')
+covdf.to_csv(f'{P}/out/covariates_qr.csv', index=False, float_format='%.12g')
 json.dump({'n_ref': len(ref), 'pct_tiva': 100 * ref.tiva.mean(), 'pct_lap': 100 * ref.lap.mean(),
            'bmi_missing': int(ref.bmi.isna().sum())}, open(f'{P}/out/covariates_n.json', 'w'), indent=1)
 
@@ -126,7 +126,7 @@ for name, d in (('All ASA I-II', ref), ('No vasoactive drug', nodrug), ('No vaso
         pr = predict(m, [30, 50, 70])
         rows.append({'population': name, 'sex': s, 'n': int((d.sex == s).sum()),
                      **{f'P3_{a}': pr.at[a, 0.03] for a in (30, 50, 70)}})
-pd.DataFrame(rows).to_csv(f'{P}/out/etco2_nodrug_check.csv', index=False, float_format='%.1f')
+pd.DataFrame(rows).to_csv(f'{P}/out/etco2_nodrug_check.csv', index=False, float_format='%.12g')
 
 pd.set_option('display.width', 220)
 print(json.load(open(f'{P}/out/crossing.json')))

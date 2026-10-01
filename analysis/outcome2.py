@@ -170,8 +170,8 @@ dth['base_q'] = pd.qcut(dth.base_map, 4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
 bq = dth.groupby('base_q', observed=True).agg(n=('death', 'size'), deaths=('death', 'sum'), lo=('base_map', 'min'),
                                               hi=('base_map', 'max'))
 bq['pct'] = 100 * bq.deaths / bq.n
-bq.to_csv(f'{P}/out/outcome2_baseline_quartiles.csv', float_format='%.2f')
-res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.4f')
+bq.to_csv(f'{P}/out/outcome2_baseline_quartiles.csv', float_format='%.12g')
+res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.12g')
 
 # 被標記為低血壓的比例與其 AKI 發生率：絕對 <65、相對 <80% 基線、百分位 <P10（都用 lowest sustained 5 min）
 fl = []
@@ -182,7 +182,7 @@ for name, g in (('All', aki), ('Women under 50', yw), ('Men 70 and over', aki[(a
                    'aki_events_flagged': int(g.aki[mask].sum()), 'flagged_pct': 100 * mask.mean(),
                    'aki_flagged_pct': 100 * g.aki[mask].mean() if mask.any() else np.nan,
                    'aki_not_flagged_pct': 100 * g.aki[~mask].mean() if (~mask).any() else np.nan})
-pd.DataFrame(fl).to_csv(f'{P}/out/outcome2_flags.csv', index=False, float_format='%.2f')
+pd.DataFrame(fl).to_csv(f'{P}/out/outcome2_flags.csv', index=False, float_format='%.12g')
 flow['baseline_map_median'] = float(aki.base_map.median())
 flow['aki_asa_ge3_pct'] = 100 * float((aki.asa >= 3).mean())
 flow['aki_pct'] = 100 * float(aki.aki.mean())

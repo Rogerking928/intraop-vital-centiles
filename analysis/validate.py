@@ -56,9 +56,9 @@ for v in V:
                        'lo': np.percentile(bs, 2.5), 'hi': np.percentile(bs, 97.5)})
 
 out = pd.DataFrame(rows)
-out.to_csv(f'{P}/out/validation.csv', index=False, float_format='%.4f')
+out.to_csv(f'{P}/out/validation.csv', index=False, float_format='%.12g')
 sh = pd.DataFrame(shifts)
-sh.to_csv(f'{P}/out/validation_shift.csv', index=False, float_format='%.4f')
+sh.to_csv(f'{P}/out/validation_shift.csv', index=False, float_format='%.12g')
 pd.set_option('display.width', 250)
 cols = ['var', 'stratum', 'level', 'n', 'below_P3', 'below_P10', 'below_P50', 'below_P90', 'below_P97']
 print(out[cols].round(1).to_string())

@@ -26,6 +26,6 @@ for v in g['var'].unique():
                          'qr_below_P3': 100 * h[0.03].mean(), 'qr_below_P97': 100 * h[0.97].mean(),
                          'g_below_P3': 100 * f.below_P3, 'g_below_P97': 100 * f.below_P97})
 d = pd.DataFrame(rows)
-d.to_csv(f'{P}/out/gamlss_compare.csv', index=False, float_format='%.2f')
+d.to_csv(f'{P}/out/gamlss_compare.csv', index=False, float_format='%.12g')
 d['dmax'] = d[['qr_P3', 'qr_P50', 'qr_P97']].values.__sub__(d[['g_P3', 'g_P50', 'g_P97']].values).__abs__().max(axis=1)
 print(d.groupby('var').dmax.max().round(2)); print(d.drop_duplicates(['var','sex'])[['var','sex','family','qr_below_P3','g_below_P3','qr_below_P97','g_below_P97']].round(1))

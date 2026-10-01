@@ -140,7 +140,7 @@ for b in range(200):
 res['dauc_vs_65'] = res.auc - res.set_index('exposure').at['Minutes below 65 mmHg', 'auc']
 res['dauc_lo'] = [np.nanpercentile(bs[k], 2.5) for k in res.exposure]
 res['dauc_hi'] = [np.nanpercentile(bs[k], 97.5) for k in res.exposure]
-res.to_csv(f'{P}/out/outcome_models.csv', index=False, float_format='%.4f')
+res.to_csv(f'{P}/out/outcome_models.csv', index=False, float_format='%.12g')
 
 # 劑量反應：暴露分鐘數分組的 AKI 發生率（未校正）
 dose = []
@@ -152,7 +152,7 @@ for c, lab in [('min_lt65', 'Below 65 mmHg'), ('min_ltp3', 'Below own P3'), ('mi
     dose.append(t)
 dose = pd.concat(dose)
 dose['rate'] *= 100
-dose.to_csv(f'{P}/out/outcome_dose.csv', index=False, float_format='%.2f')
+dose.to_csv(f'{P}/out/outcome_dose.csv', index=False, float_format='%.12g')
 
 # 年齡層：同樣 0 分鐘 vs 有暴露，看 65 與 P10 誰在年輕人／老人各抓到誰
 d['band'] = pd.cut(d.age, [18, 50, 70, 91], right=False, labels=['18-49', '50-69', '70-90'])
@@ -160,7 +160,7 @@ by = d.groupby('band', observed=True).apply(lambda g: pd.Series({
     'n': len(g), 'aki_pct': 100 * g.aki.mean(),
     'any_lt65_pct': 100 * (g.min_lt65 > 0).mean(), 'any_ltp10_pct': 100 * (g.min_ltp10 > 0).mean(),
     'thr_p10_median': g.thr_p10.median(), 'thr_p3_median': g.thr_p3.median()}))
-by.to_csv(f'{P}/out/outcome_by_age.csv', float_format='%.2f')
+by.to_csv(f'{P}/out/outcome_by_age.csv', float_format='%.12g')
 
 out = {'flow': flow, 'aki_pct': 100 * d.aki.mean(), 'age_median': float(d.age.median()),
        'asa_ge3_pct': 100 * float((d.asa >= 3).mean()),

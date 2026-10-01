@@ -1,6 +1,11 @@
 """共用：按性別的年齡平滑百分位（分位數迴歸＋自然三次樣條，df=4），預測時做 rearrangement 防交叉。"""
 import numpy as np, pandas as pd, patsy, warnings
 from statsmodels.regression.quantile_regression import QuantReg
+from threadpoolctl import threadpool_limits
+
+# 分位數迴歸在整數資料（EtCO2、取整的血壓）上解不唯一，多執行緒 BLAS 的加總順序會讓 IRLS 停在不同的解，
+# 同一支程式重跑差到 0.1。鎖單執行緒，結果才可逐位重現（2026-10-01 實測兩次相同）。
+threadpool_limits(1)
 
 Q = [0.03, 0.10, 0.25, 0.50, 0.75, 0.90, 0.97]
 VARS = ['nibp_map', 'nibp_sbp', 'nibp_dbp', 'hr', 'etco2', 'temp_c', 'art_map']
