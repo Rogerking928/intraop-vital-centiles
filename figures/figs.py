@@ -118,19 +118,27 @@ def fig_flow():
     def arrow(x0, y0, x1, y1):
         ax.annotate('', xy=(x1, y1), xytext=(x0, y0), arrowprops=dict(arrowstyle='-|>', lw=0.6, color=INK2,
                                                                       mutation_scale=6))
-    for (xm, xe, head, steps) in ((11.5, 37.0, 'MOVER (UCI Medical Center)', mover),
-                                  (62.5, 87.5, 'VitalDB (SNUH, Seoul)', vdb)):
+    MW, EW = 20, 23   # main and exclusion box widths; columns leave a margin at both figure edges
+    for (xm, xe, head, steps) in ((12.0, 36.0, 'MOVER (UCI Medical Center)', mover),
+                                  (61.0, 85.5, 'VitalDB (SNUH, Seoul)', vdb)):
         ax.text((xm + xe) / 2, 98.5, head, ha='center', va='center', fontsize=8.5, fontweight='bold')
         ys = np.linspace(91, 6, len(steps))
         step = ys[0] - ys[1]
         for i, (t, e) in enumerate(steps):
-            box(xm, ys[i], t, 22, 6.6, bold=e is None, size=6.4)
+            box(xm, ys[i], t, MW, 6.6, bold=e is None, size=6.4)
             if i < len(steps) - 1:
                 arrow(xm, ys[i] - 3.3, xm, ys[i + 1] + 3.3)
                 ym = ys[i] - step / 2
-                box(xe, ym, e, 25, 7.8, size=6.0)
-                ax.plot([xm, xe - 12.5], [ym, ym], color=INK2, lw=0.6)
+                box(xe, ym, e, EW, 7.8, size=6.0)
+                ax.plot([xm, xe - EW / 2], [ym, ym], color=INK2, lw=0.6)
     fig.canvas.draw(); r = fig.canvas.get_renderer()
+    ext = ax.get_window_extent(r)
+    for pa, _ in boxes_:
+        a = pa.get_window_extent(r)
+        for qa, _ in boxes_:
+            b = qa.get_window_extent(r)
+            assert qa is pa or min(a.x1, b.x1) <= max(a.x0, b.x0) or min(a.y1, b.y1) <= max(a.y0, b.y0), "flow boxes overlap"
+        assert a.x0 - ext.x0 > 0.01 * ext.width and ext.x1 - a.x1 > 0.01 * ext.width, "flow box touches the figure edge"
     for pa, t in boxes_:
         a, b = pa.get_window_extent(r), t.get_window_extent(r)
         assert b.x0 > a.x0 + 2 and b.x1 < a.x1 - 2 and b.y0 > a.y0 and b.y1 < a.y1, \
@@ -208,6 +216,8 @@ def fig_calibration():
     for ax in axs[1]: ax.set_xlabel('MOVER reference centile')
     for ax in axs[:, 0]: ax.set_ylabel('VitalDB patients below (%)')
     h, l = axs[0, 0].get_legend_handles_labels()
+    h[-1] = plt.Line2D([], [], marker='o', ls='', ms=3, color=INK)
+    l[-1] = 'All patients'
     fig.legend(h[::-1], l[::-1], loc='lower center', ncol=5, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.01))
     fig.tight_layout(w_pad=1.4, h_pad=1.4, rect=(0, 0.05, 1, 1))
     save(fig, 'figure4')
@@ -224,10 +234,13 @@ def fig_nodrug():
         for j, v in enumerate(['nibp_map', 'nibp_sbp', 'hr']):
             ax = axs[i, j]
             for t, ls, lab in ((a, '-', 'All ASA I-II (primary)'), (b, '--', 'No vasoactive drug')):
-                g = t[(t['var'] == v) & (t.sex == sex)]
+                g = t[(t['var'] == v) & (t.sex == sex) & (t.age <= 85)]
                 for q in ('P3', 'P50', 'P97'):
                     ax.plot(g.age, g[q], color=SEXCOL[sex], ls=ls, lw=1.4 if q == 'P50' else 0.9,
                             label=lab if q == 'P50' else None)
+            g = a[(a['var'] == v) & (a.sex == sex) & (a.age == 85)]
+            for q in ('P3', 'P50', 'P97'):
+                ax.text(86, g[q].iloc[0], q, fontsize=7, color=SEXCOL[sex], va='center')
             ax.set_ylim(*ylim[v]); ax.set_xlim(18, 90); ax.set_xticks([20, 40, 60, 80])
             if i == 0: ax.set_title(TITLE[v], fontsize=9, pad=6)
             ax.set_ylabel(f"{sex}\n{LAB[v]}" if j == 0 else LAB[v], fontsize=8.5)

@@ -24,7 +24,7 @@ con = duckdb.connect()
 con.execute("set memory_limit='4GB'; set threads=6")
 mv = pd.read_parquet(f'{P}/out/cohort_mover.parquet').merge(pd.read_parquet(f'{P}/out/readings_mover.parquet'), on='LOG_ID')
 mv = mv[mv.asa.notna()].copy()
-disp = con.execute(f"select LOG_ID, any_value(DISCH_DISP) disp from read_csv_auto('{MX}/patient_information.csv', all_varchar=true) group by 1").df()
+disp = con.execute(f"select LOG_ID, max(DISCH_DISP) disp from read_csv_auto('{MX}/patient_information.csv', all_varchar=true) group by 1").df()
 mv['death'] = mv.LOG_ID.map(disp.set_index('LOG_ID').disp).eq('Expired').astype(int)
 con.register('pi', mv[['LOG_ID', 'an0', 'an1']])
 
@@ -67,7 +67,8 @@ select l.LOG_ID, try_strptime(l."Collection Datetime", '%Y-%m-%d %H:%M:%S') t, t
 from read_csv_auto('{MX}/patient_labs.csv', all_varchar=true) l join pi using (LOG_ID)
 where l."Lab Code" in ('2160-0','38483-4')""").df()
 crl = crl[crl.cr.between(0.1, 20) & crl.t.notna()]
-p0 = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values('t').groupby('LOG_ID').cr.last()
+# 同一時間兩筆時取較高者，結果才可重現（duckdb 回傳順序不固定）
+p0 = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values(['LOG_ID', 't', 'cr'], kind='mergesort').groupby('LOG_ID').cr.last()
 post = crl[crl.t >= crl.an1]
 p48 = post[post.t < post.an1 + pd.Timedelta(hours=48)].groupby('LOG_ID').cr.max()
 p7 = post[post.t < post.an1 + pd.Timedelta(days=7)].groupby('LOG_ID').cr.max()
@@ -79,9 +80,9 @@ mv['log_dur'] = np.log(mv.dur)
 mv['l_full65'] = np.log1p(mv.full_min_lt65)
 mv['l_maint65'] = np.log1p(mv.maint_min_lt65)
 
-EXPO = {'Lowest sustained MAP, mmHg': ' + cr(maint_sust5, df=3)',
-        'Lowest sustained MAP, % of pre-operative baseline': ' + cr(sust5_pct_base, df=3)',
-        'Lowest sustained MAP, age-sex reference centile': ' + cr(sust5_centile, df=3)',
+EXPO = {'Lowest sustained MAP, mmHg': ' + cr(maint_sust5, df=3, constraints="center")',
+        'Lowest sustained MAP, % of pre-operative baseline': ' + cr(sust5_pct_base, df=3, constraints="center")',
+        'Lowest sustained MAP, age-sex reference centile': ' + cr(sust5_centile, df=3, constraints="center")',
         'Minutes below 65 mmHg, maintenance': ' + l_maint65',
         'Minutes below 65 mmHg, whole anaesthesia incl. induction': ' + l_full65',
         'None (covariates only)': ''}
@@ -92,14 +93,27 @@ def fitm(f, d, y):
     return m, roc_auc_score(d[y], m.predict(d))
 
 
-def compare(d, y, base, label):
+EXPO_LIN = {'Lowest sustained MAP, mmHg': ' + maint_sust5',
+            'Lowest sustained MAP, % of pre-operative baseline': ' + sust5_pct_base',
+            'Lowest sustained MAP, age-sex reference centile': ' + sust5_centile',
+            'Minutes below 65 mmHg, maintenance': ' + l_maint65',
+            'Minutes below 65 mmHg, whole anaesthesia incl. induction': ' + l_full65',
+            'None (covariates only)': ''}
+
+
+def compare(d, y, base, label, expo=None):
+    global EXPO
+    keep = EXPO
+    if expo is not None: EXPO = expo
     out, bs = [], {k: [] for k in EXPO}
     refk = 'Lowest sustained MAP, mmHg'
     for k, e in EXPO.items():
         m, auc = fitm(base + e, d, y)
-        out.append({'outcome': label, 'exposure': k, 'n': len(d), 'events': int(d[y].sum()), 'aic': m.aic, 'auc': auc})
+        assert m.mle_retvals['converged'], f"{label} / {k}: not converged"
+        out.append({'outcome': label, 'exposure': k, 'n': len(d), 'events': int(d[y].sum()), 'aic': m.aic, 'auc': auc,
+                    'df': int(m.df_model), 'n_params': len(m.params) - 1})
     rng = np.random.default_rng(5)
-    for b in range(200):
+    for b in range(int(os.environ.get('NBOOT', 200))):
         s = d.iloc[rng.integers(0, len(d), len(d))]
         a = {}
         for k, e in EXPO.items():
@@ -111,24 +125,34 @@ def compare(d, y, base, label):
     r['dauc_vs_mmHg'] = r.auc - r.set_index('exposure').at[refk, 'auc']
     r['dauc_lo'] = [np.nanpercentile(bs[k], 2.5) for k in r.exposure]
     r['dauc_hi'] = [np.nanpercentile(bs[k], 97.5) for k in r.exposure]
+    EXPO = keep
     return r
 
 
 need = ['maint_sust5', 'sust5_pct_base', 'sust5_centile']
 flow = {'known_asa': len(mv), 'with_baseline_map': int(mv.base_map.notna().sum())}
 aki = mv[mv.cr0.notna() & mv.cr7.notna() & (mv.cr0 < 4.0)].dropna(subset=need)
-dth = mv.dropna(subset=need)
+dth = mv.dropna(subset=need).copy()
 flow.update({'aki_cohort': len(aki), 'aki_events': int(aki.aki.sum()), 'death_cohort': len(dth),
              'deaths': int(dth.death.sum())})
-B_AKI = "aki ~ cr(age, df=4) + C(sex) + C(asa_c) + cr0 + log_dur + inpatient"
-B_DTH = "death ~ cr(age, df=4) + C(sex) + C(asa_c) + log_dur + inpatient"
+B_AKI = "aki ~ cr(age, df=4, constraints='center') + C(sex) + C(asa_c) + cr0 + log_dur + inpatient"
+# 樣條一律置中（constraints='center'）：不置中時 cr() 與截距共線，df_model 會依數值容許誤差忽高忽低，AIC 跟著錯。
+# 死亡：ASA I 沒有死亡（ASA II 只有 2 例），ASA I 的係數發散、Hessian 奇異 → 死亡模型把 ASA I–II 併成一組
+dth['asa_d'] = np.where(dth.asa <= 2, '1-2', dth.asa_c)
+flow['deaths_asa12'] = int(dth.death[dth.asa <= 2].sum()); flow['n_asa12_death_cohort'] = int((dth.asa <= 2).sum())
+B_DTH = "death ~ cr(age, df=4, constraints='center') + C(sex) + C(asa_d) + log_dur + inpatient"
 res = pd.concat([compare(aki, 'aki', B_AKI, 'Acute kidney injury'),
                  compare(dth, 'death', B_DTH, 'In-hospital death')])
-# 50 歲以下女性：AKI 事件太少時改用住院死亡以外的，只報 AKI
-yw = aki[(aki.sex == 'Female') & (aki.age < 50)]
-flow.update({'young_women_aki_cohort': len(yw), 'young_women_aki': int(yw.aki.sum())})
-res = pd.concat([res, compare(yw, 'aki', "aki ~ cr(age, df=3) + C(asa_c) + cr0 + log_dur + inpatient",
+# 50 歲以下女性：門診只有十幾人且無 AKI（住院類別完全分離），模型不放 inpatient。AKI 事件太少時改用住院死亡以外的，只報 AKI
+yw = aki[(aki.sex == 'Female') & (aki.age < 50)].copy()
+flow.update({'young_women_aki_cohort': len(yw), 'young_women_aki': int(yw.aki.sum()),
+             'young_women_outpatient': int((yw.inpatient == 0).sum()), 'young_women_outpatient_aki': int(yw.aki[yw.inpatient == 0].sum())})
+res = pd.concat([res, compare(yw, 'aki', "aki ~ cr(age, df=3, constraints='center') + C(asa_c) + cr0 + log_dur",
                               'Acute kidney injury, women under 50')])
+# 死亡只有約 160 件：精簡模型（年齡線性、性別、ASA III 以上、麻醉時長；暴露線性）當敏感度分析
+dth['asa3'] = (dth.asa >= 3).astype(int)
+res = pd.concat([res, compare(dth, 'death', "death ~ age + C(sex) + asa3 + log_dur", 'In-hospital death, parsimonious model',
+                              EXPO_LIN)])
 res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.4f')
 
 # 被標記為低血壓的比例與其 AKI 發生率：絕對 <65、相對 <80% 基線、百分位 <P10（都用 lowest sustained 5 min）
@@ -136,11 +160,14 @@ fl = []
 for name, g in (('All', aki), ('Women under 50', yw), ('Men 70 and over', aki[(aki.sex == 'Male') & (aki.age >= 70)])):
     for lab, mask in (('Below 65 mmHg', g.maint_sust5 < 65), ('Below 80% of baseline', g.sust5_pct_base < 80),
                       ('Below reference P10', g.sust5_centile < 10)):
-        fl.append({'group': name, 'definition': lab, 'n': len(g), 'flagged_pct': 100 * mask.mean(),
+        fl.append({'group': name, 'definition': lab, 'n': len(g), 'n_flagged': int(mask.sum()),
+                   'aki_events_flagged': int(g.aki[mask].sum()), 'flagged_pct': 100 * mask.mean(),
                    'aki_flagged_pct': 100 * g.aki[mask].mean() if mask.any() else np.nan,
                    'aki_not_flagged_pct': 100 * g.aki[~mask].mean() if (~mask).any() else np.nan})
 pd.DataFrame(fl).to_csv(f'{P}/out/outcome2_flags.csv', index=False, float_format='%.2f')
 flow['baseline_map_median'] = float(aki.base_map.median())
+flow['aki_asa_ge3_pct'] = 100 * float((aki.asa >= 3).mean())
+flow['aki_pct'] = 100 * float(aki.aki.mean())
 json.dump(flow, open(f'{P}/out/outcome2.json', 'w'), indent=1)
 pd.set_option('display.width', 250)
 print(json.dumps(flow, indent=1)); print(res.round(4).to_string()); print(pd.DataFrame(fl).round(1).to_string())

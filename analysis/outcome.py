@@ -36,7 +36,8 @@ select l.LOG_ID, try_strptime(l."Collection Datetime", '%Y-%m-%d %H:%M:%S') t, t
 from read_csv_auto('{MX}/patient_labs.csv', all_varchar=true) l join pi using (LOG_ID)
 where l."Lab Code" in ('2160-0','38483-4')""").df()
 crl = crl[crl.cr.between(0.1, 20) & crl.t.notna()]
-pre = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values('t').groupby('LOG_ID').cr.last()
+# 同一時間兩筆時取較高者，結果才可重現
+pre = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values(['LOG_ID', 't', 'cr'], kind='mergesort').groupby('LOG_ID').cr.last()
 post = crl[crl.t >= crl.an1]
 p48 = post[post.t < post.an1 + pd.Timedelta(hours=48)].groupby('LOG_ID').cr.max()
 p7 = post[post.t < post.an1 + pd.Timedelta(days=7)].groupby('LOG_ID').cr.max()
@@ -95,14 +96,14 @@ d['log_dur'] = np.log(d.dur)
 for c in ['min_lt65', 'min_ltp3', 'min_ltp10', 'min_lt55']:
     d[f'l_{c}'] = np.log1p(d[c])
 
-BASE = "aki ~ cr(age, df=4) + C(sex) + C(asa_c) + cr0 + log_dur + inpatient"
+BASE = "aki ~ cr(age, df=4, constraints='center') + C(sex) + C(asa_c) + cr0 + log_dur + inpatient"
 EXPO = {'None (covariates only)': '',
         'Minutes below 65 mmHg': ' + l_min_lt65',
         'Minutes below 55 mmHg': ' + l_min_lt55',
         'Minutes below own reference P10': ' + l_min_ltp10',
         'Minutes below own reference P3': ' + l_min_ltp3',
-        'Case median MAP, mmHg (spline)': ' + cr(nibp_map, df=4)',
-        'Case median MAP, reference centile (spline)': ' + cr(map_centile, df=4)'}
+        'Case median MAP, mmHg (spline)': ' + cr(nibp_map, df=4, constraints="center")',
+        'Case median MAP, reference centile (spline)': ' + cr(map_centile, df=4, constraints="center")'}
 
 
 def fitm(f, data):

@@ -33,7 +33,9 @@ select LOG_ID, MRN, try_cast(BIRTH_DATE as int) age, SEX sex, PRIMARY_ANES_TYPE_
        try_strptime(AN_START_DATETIME, '%m/%d/%y %H:%M') an0, try_strptime(AN_STOP_DATETIME, '%m/%d/%y %H:%M') an1
 from read_csv_auto('{MX}/patient_information.csv', all_varchar=true)""").df()
 flow = {'records': len(pi), 'cases': int(pi.LOG_ID.nunique())}
-pi = pi.drop_duplicates('LOG_ID')
+# 少數 LOG_ID（8 個）有互相矛盾的重複列；固定取麻醉開始時間最晚的一列，結果才可重現
+pi = pi.sort_values(['LOG_ID', 'an0', 'MRN', 'an1', 'proc', 'asa'], ascending=[True, False, True, True, True, True],
+                    kind='mergesort', na_position='last').drop_duplicates('LOG_ID')
 pi = pi[(pi.age >= 18) & (pi.anes == 'General') & pi.sex.isin(['Female', 'Male'])]
 flow['adult_general'] = len(pi)
 pu = pi.proc.fillna('').str.upper()
@@ -48,7 +50,8 @@ flow['non_cardiac'] = len(pi)
 pi['dur'] = (pi.an1 - pi.an0).dt.total_seconds() / 60
 pi = pi[pi.dur >= 60]
 flow['anes_ge_60min'] = len(pi)
-pi = pi.sort_values(['MRN', 'an0']).drop_duplicates('MRN')
+# 同一人同一開始時間的多筆紀錄：取 LOG_ID 最小者（固定規則）
+pi = pi.sort_values(['MRN', 'an0', 'LOG_ID'], kind='mergesort').drop_duplicates('MRN')
 flow['first_case_per_patient'] = len(pi)
 
 
@@ -119,7 +122,8 @@ mv['ref'] = mv.asa.isin([1, 2])
 flow['reference_asa12'] = int(mv.ref.sum())
 flow['asa_missing'] = int(mv.asa.isna().sum())
 mv = mv.drop(columns=['ht', 'anes', 'MRN'])
-mv.to_parquet(f'{P}/out/cohort_mover.parquet')
+OD = os.environ.get('COHORT_OUT', f'{P}/out')
+mv.to_parquet(f'{OD}/cohort_mover.parquet')
 
 # ---------------- VitalDB ----------------
 vc = pd.read_csv(f'{VD}/cases.csv')
@@ -153,7 +157,7 @@ vflow['non_cardiac'] = len(vv)
 vv['dur'] = (vv.aneend - vv.anestart) / 60
 vv = vv[vv.dur >= 60]
 vflow['anes_ge_60min'] = len(vv)
-vv = vv.sort_values('casestart').drop_duplicates('subjectid')
+vv = vv.sort_values(['subjectid', 'casestart', 'caseid'], kind='mergesort').drop_duplicates('subjectid')
 vflow['first_case_per_subject'] = len(vv)
 vv = vv[vv.n_hr >= 20]
 vflow['analysable_hr'] = len(vv)
@@ -166,9 +170,9 @@ vflow['asa_missing'] = int(vv.asa.isna().sum())
 vv = vv.reset_index()[['caseid', 'age', 'sex', 'asa', 'emop', 'department', 'optype', 'approach', 'bmi', 'dur',
                        'vaso_inf', 'vaso_bolus', 'ref', 'hr', 'spo2', 'etco2', 'art_map', 'temp_c', 'nibp_sbp',
                        'nibp_dbp', 'nibp_map', 'n_hr', 'n_nibp', 'n_art', 'nibp_frac_lt65']]
-vv.to_parquet(f'{P}/out/cohort_vitaldb.parquet')
+vv.to_parquet(f'{OD}/cohort_vitaldb.parquet')
 
-json.dump({'mover': flow, 'vitaldb': vflow}, open(f'{P}/out/cohort_flow.json', 'w'), indent=1)
+json.dump({'mover': flow, 'vitaldb': vflow}, open(f'{OD}/cohort_flow.json', 'w'), indent=1)
 print(json.dumps({'mover': flow, 'vitaldb': vflow}, indent=1))
 print(mv.groupby('ref')[['vaso_inf', 'vaso_bolus']].mean())
 print(vv.groupby('ref')[['vaso_inf', 'vaso_bolus']].mean())

@@ -4,6 +4,7 @@
 指標：中位數、時間加權平均（TWA，每筆讀值算到下一筆、上限 10 分鐘）、
       持續 5 分鐘的最低 MAP（相鄰讀值涵蓋 ≥5 分鐘時，該段內的最高值；取全程最小）＝ lowest sustained MAP、
       單筆最低 MAP、低於 65 的分鐘數。
+每筆讀值的時長一律在整段麻醉的序列上算（到下一筆、上限 10 分鐘），兩個時窗才一致。
 輸出 out/readings_mover.parquet（每人一列，兩個時窗各一組欄位）。
 """
 import os as _os
@@ -32,30 +33,36 @@ order by LOG_ID, t""").df()
 
 
 def metrics(g):
-    t = g.t.values.astype('datetime64[s]').astype(np.int64) / 60.0
+    t = g.tmin.values
     x = g.mp.values
-    dur = np.minimum(np.append(np.diff(t), 5.0), 10.0)
+    dur = g.dur.values                     # interval to the next reading of the WHOLE anaesthetic, capped at 10 min
     out = {'n': len(x), 'median': np.median(x), 'twa': np.sum(x * dur) / np.sum(dur), 'min1': x.min(),
            'min_lt65': float(np.sum(dur[x < 65]))}
-    # 持續 5 分鐘：從第 i 筆起，往後取到涵蓋 ≥5 分鐘為止，該段最大值；全程最小
-    best = np.nan
-    j = 0
+    # lowest sustained 5 min: the highest value among consecutive readings whose timestamps span at least 5 min
+    # (so at least two readings); take the minimum over all such runs. A run inside the maintenance window is also a
+    # run of the whole anaesthetic, so the whole-anaesthetic value can never exceed the maintenance value.
+    best, j = np.nan, 0
     for i in range(len(x)):
         j = max(j, i)
         while j < len(x) - 1 and t[j] - t[i] < 5:
             j += 1
-        if t[j] - t[i] >= 5 or (j == len(x) - 1 and t[j] - t[i] + dur[j] >= 5):
+        if t[j] - t[i] >= 5:
             v = x[i:j + 1].max()
             best = v if np.isnan(best) else min(best, v)
     out['sust5'] = best
     return pd.Series(out)
 
 
+r['tmin'] = r.t.values.astype('datetime64[s]').astype(np.int64) / 60.0
+nxt = r.groupby('LOG_ID', sort=False).tmin.shift(-1)
+r['dur'] = np.minimum((nxt - r.tmin).fillna(5.0), 10.0)
 res = []
 for win, sub in (('maint', r[r.maint]), ('full', r)):
     m = sub.groupby('LOG_ID', sort=False).apply(metrics)
     m.columns = [f'{win}_{c}' for c in m.columns]
     res.append(m)
 out = pd.concat(res, axis=1).reset_index()
+chk = out.full_sust5 > out.maint_sust5 + 1e-9
+assert not chk.any(), f"{int(chk.sum())} patients with a whole-anaesthesia sustained MAP above the maintenance one"
 out.to_parquet(f'{P}/out/readings_mover.parquet')
 print(out.describe().round(1).T)
