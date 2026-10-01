@@ -52,7 +52,7 @@ flow['aki'] = int(d.aki.sum())
 
 # ---- 參考閾值：參考族群「最低持續 5 分鐘 MAP」的 P3／P10（每人一個數） ----
 # 2026-10-01 審閱：原本用 case median 的百分位當單筆讀值的閾值，門檻太高（18–49 歲 66% 被標記，多於 65 mmHg）；
-# 讀值層級的閾值要用讀值層級的分布，與 Table 3／S15 的指標一致。
+# 讀值層級的閾值要用讀值層級的分布，與 Table 3／S16 的指標一致。
 ref = mv[mv.ref].merge(pd.read_parquet(f'{P}/out/readings_mover.parquet')[['LOG_ID', 'maint_sust5']], on='LOG_ID')
 models = fit_both(ref, 'maint_sust5', [0.03, 0.10, 0.5])
 for s, m in models.items():

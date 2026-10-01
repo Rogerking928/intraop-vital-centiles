@@ -158,7 +158,19 @@ res = pd.concat([res,
                  compare(dth, 'death', B_DTH + " + cr(base_map, df=3, constraints='center')",
                          'In-hospital death, adjusted for pre-operative MAP'),
                  compare(dth, 'death', "death ~ age + C(sex) + asa3 + log_dur + base_map",
-                         'In-hospital death, parsimonious model, adjusted for pre-operative MAP', EXPO_LIN)])
+                         'In-hospital death, parsimonious model, adjusted for pre-operative MAP', EXPO_LIN),
+                 compare(aki, 'aki', B_AKI + " + cr(base_map, df=3, constraints='center')",
+                         'Acute kidney injury, adjusted for pre-operative MAP')])
+# 術前 MAP 本身與死亡的方向（審閱：低術前血壓是否代表病情較重）
+mb = smf.logit("death ~ age + C(sex) + asa3 + log_dur + I(base_map / 10)", dth).fit(disp=0)
+k = 'I(base_map / 10)'
+flow['death_or_per10_base_map'] = float(np.exp(mb.params[k]))
+flow['death_or_per10_base_map_ci'] = [float(x) for x in np.exp(mb.conf_int().loc[k])]
+dth['base_q'] = pd.qcut(dth.base_map, 4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
+bq = dth.groupby('base_q', observed=True).agg(n=('death', 'size'), deaths=('death', 'sum'), lo=('base_map', 'min'),
+                                              hi=('base_map', 'max'))
+bq['pct'] = 100 * bq.deaths / bq.n
+bq.to_csv(f'{P}/out/outcome2_baseline_quartiles.csv', float_format='%.2f')
 res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.4f')
 
 # 被標記為低血壓的比例與其 AKI 發生率：絕對 <65、相對 <80% 基線、百分位 <P10（都用 lowest sustained 5 min）
