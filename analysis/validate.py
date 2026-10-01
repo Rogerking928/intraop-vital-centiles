@@ -21,6 +21,8 @@ mv = pd.read_parquet(f'{P}/out/cohort_mover.parquet')
 ref = mv[mv.ref]
 vd = pd.read_parquet(f'{P}/out/cohort_vitaldb.parquet')
 vd = vd[vd.ref].copy()
+# MOVER 年齡截在 90、參考曲線只到 90：VitalDB 也截在 90（原本 >90 的人被拿去比外推的百分位，且不在任何年齡層）
+vd['age'] = vd.age.clip(upper=90)
 for k in ['nibp_map', 'nibp_sbp', 'nibp_dbp']:
     vd.loc[vd.n_nibp < 3, k] = np.nan
 vd['band'] = pd.cut(vd.age, BANDS, right=False, labels=BLAB)
@@ -54,9 +56,9 @@ for v in V:
                        'lo': np.percentile(bs, 2.5), 'hi': np.percentile(bs, 97.5)})
 
 out = pd.DataFrame(rows)
-out.to_csv(f'{P}/out/validation.csv', index=False, float_format='%.2f')
+out.to_csv(f'{P}/out/validation.csv', index=False, float_format='%.4f')
 sh = pd.DataFrame(shifts)
-sh.to_csv(f'{P}/out/validation_shift.csv', index=False, float_format='%.2f')
+sh.to_csv(f'{P}/out/validation_shift.csv', index=False, float_format='%.4f')
 pd.set_option('display.width', 250)
 cols = ['var', 'stratum', 'level', 'n', 'below_P3', 'below_P10', 'below_P50', 'below_P90', 'below_P97']
 print(out[cols].round(1).to_string())

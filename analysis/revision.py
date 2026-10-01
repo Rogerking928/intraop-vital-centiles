@@ -32,7 +32,7 @@ for v in V:
         pr = predict(m, AGES)
         for a in AGES:
             rows.append({'var': v, 'sex': s, 'age': int(a), **{f'P{int(round(q*100))}': pr.at[a, q] for q in pr.columns}})
-pd.DataFrame(rows).to_csv(f'{P}/out/norms_table_nodrug.csv', index=False, float_format='%.2f')
+pd.DataFrame(rows).to_csv(f'{P}/out/norms_table_nodrug.csv', index=False, float_format='%.4f')
 
 # ---- B：未排序的預測有沒有交叉
 cross = {}
@@ -48,6 +48,7 @@ json.dump({'ages_with_crossing_before_rearrangement': cross, 'ages_checked': int
 # ---- C：再校正
 vd = pd.read_parquet(f'{P}/out/cohort_vitaldb.parquet')
 vd = vd[vd.ref].copy()
+vd['age'] = vd.age.clip(upper=90)   # 同 validate.py：MOVER 年齡截在 90
 for k in ['nibp_map', 'nibp_sbp', 'nibp_dbp']:
     vd.loc[vd.n_nibp < 3, k] = np.nan
 rng = np.random.default_rng(3)
@@ -73,7 +74,7 @@ for v in V:
             r[f'below_P{int(round(q*100))}'] = 100 * float((d.loc[B, v] < c).mean())
         r['mean_abs_error'] = float(np.mean([abs(r[f'below_P{int(round(q*100))}'] - 100 * q) for q in QS]))
         rec.append(r)
-pd.DataFrame(rec).to_csv(f'{P}/out/recalibration.csv', index=False, float_format='%.3f')
+pd.DataFrame(rec).to_csv(f'{P}/out/recalibration.csv', index=False, float_format='%.5f')
 
 # ---- D：VitalDB 分層
 vc = pd.read_csv(f'{VD}/cases.csv').set_index('caseid')
@@ -95,7 +96,7 @@ for v in ['nibp_map', 'hr', 'etco2']:
             if len(g) < 30: continue
             st.append({'var': v, 'stratum': lab, 'level': str(lvl), 'n': len(g),
                        'below_P50': 100 * float(hit.loc[g.index, 0.5].mean()), 'median_shift': float(np.median(res[g.index]))})
-pd.DataFrame(st).to_csv(f'{P}/out/validation_strata2.csv', index=False, float_format='%.2f')
+pd.DataFrame(st).to_csv(f'{P}/out/validation_strata2.csv', index=False, float_format='%.4f')
 
 # ---- E：MOVER 共變項
 con = duckdb.connect()
@@ -114,7 +115,7 @@ for v in ['nibp_map', 'hr', 'etco2']:
             cov.append({'var': v, 'centile': int(round(q * 100)), 'term': lab, 'coef': m.params[term],
                         'lo': ci.loc[term, 0], 'hi': ci.loc[term, 1], 'n': len(d)})
 covdf = pd.DataFrame(cov)
-covdf.to_csv(f'{P}/out/covariates_qr.csv', index=False, float_format='%.3f')
+covdf.to_csv(f'{P}/out/covariates_qr.csv', index=False, float_format='%.5f')
 json.dump({'n_ref': len(ref), 'pct_tiva': 100 * ref.tiva.mean(), 'pct_lap': 100 * ref.lap.mean(),
            'bmi_missing': int(ref.bmi.isna().sum())}, open(f'{P}/out/covariates_n.json', 'w'), indent=1)
 

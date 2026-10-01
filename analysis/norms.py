@@ -53,7 +53,7 @@ def boot_one(seed):
 if __name__ == '__main__':
     models = {v: fit_both(ref, v) for v in V}
     tab = pd.DataFrame(sum((table(models[v], v) for v in V), []))
-    tab.to_csv(f'{P}/out/norms_table.csv', index=False, float_format='%.2f')
+    tab.to_csv(f'{P}/out/norms_table.csv', index=False, float_format='%.4f')
 
     # bootstrap CI
     with Pool(6) as p:
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     ci.columns = [f'{c}_{"lo" if q < 0.5 else "hi"}' for c, q in ci.columns]
     pt = tab[tab.age.isin(DEC)].set_index(['var', 'sex', 'age'])[['P3', 'P50', 'P97']]
     ci = pt.join(ci)[['P3', 'P3_lo', 'P3_hi', 'P50', 'P50_lo', 'P50_hi', 'P97', 'P97_lo', 'P97_hi']]
-    ci.to_csv(f'{P}/out/norms_ci.csv', float_format='%.2f')
+    ci.to_csv(f'{P}/out/norms_ci.csv', float_format='%.4f')
 
     # 5 折交叉驗證
     rng = np.random.default_rng(1)
@@ -99,7 +99,7 @@ if __name__ == '__main__':
                 for a in DEC:
                     sens.append({'population': name, 'n': int(len(d)), 'var': v, 'sex': s, 'age': int(a),
                                  'P3': pr.at[a, 0.03], 'P50': pr.at[a, 0.5], 'P97': pr.at[a, 0.97]})
-    pd.DataFrame(sens).to_csv(f'{P}/out/norms_sensitivity.csv', index=False, float_format='%.2f')
+    pd.DataFrame(sens).to_csv(f'{P}/out/norms_sensitivity.csv', index=False, float_format='%.4f')
 
     # 固定門檻（55／60／65 mmHg）在各年齡段中點、各性別落在第幾百分位（密集分位網格反推）
     qs = [round(x, 3) for x in np.arange(0.005, 0.5001, 0.005)]
@@ -120,14 +120,14 @@ if __name__ == '__main__':
                         'pct_median_lt65': g.nibp_map.apply(lambda x: 100 * (x < 65).mean()),
                         'pct_min_lt65': g.nibp_min_map.apply(lambda x: 100 * (x < 65).mean()),
                         'pct_time_lt65': g.nibp_frac_lt65.apply(lambda x: 100 * x.mean())})
-    thr.join(emp).to_csv(f'{P}/out/threshold.csv', float_format='%.2f')
+    thr.join(emp).to_csv(f'{P}/out/threshold.csv', float_format='%.4f')
     tot = {'pct_min_lt65': 100 * (ref.nibp_min_map < 65).mean(), 'pct_median_lt65': 100 * (ref.nibp_map < 65).mean(),
            'pct_time_lt65': 100 * ref.nibp_frac_lt65.mean(), 'n': len(ref)}
     json.dump(tot, open(f'{P}/out/threshold_overall.json', 'w'), indent=1)
 
     sp = ref.groupby(['band', 'sex'], observed=True).spo2.describe(percentiles=[0.03, 0.1, 0.5])
     sp['pct_at_100'] = ref.groupby(['band', 'sex'], observed=True).spo2.apply(lambda x: 100 * (x >= 100).mean())
-    sp.to_csv(f'{P}/out/spo2_desc.csv', float_format='%.2f')
+    sp.to_csv(f'{P}/out/spo2_desc.csv', float_format='%.4f')
 
     pd.set_option('display.width', 250)
     print(ci.round(1).to_string())

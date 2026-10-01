@@ -147,6 +147,15 @@ def fig_flow():
 
 
 # ------------------------------------------------------------------ Figures 2-3: centile curves
+def observed_centiles(ref, var, sex):
+    """Observed P3/P50/P97 in 5-year age groups from 18 years (18-22, ..., 83-87, then 88-90), plotted at the group
+    midpoint. Shared with build.figure_data so the source data hold exactly the plotted points."""
+    g = ref[ref.sex == sex][['age', var]].dropna()
+    lo = 18 + ((g.age.clip(upper=90) - 18) // 5) * 5
+    g = g.assign(b=(lo + np.minimum(lo + 4, 90)) / 2)
+    return g.groupby('b')[var].quantile([0.03, 0.5, 0.97]).unstack()
+
+
 def centile_panel(ax, var, sex, tab, ref):
     t = tab[(tab['var'] == var) & (tab.sex == sex)]
     c = SEXCOL[sex]
@@ -154,9 +163,8 @@ def centile_panel(ax, var, sex, tab, ref):
     for q, ls, lw in (('P3', ':', 0.9), ('P10', '--', 0.9), ('P50', '-', 1.6), ('P90', '--', 0.9), ('P97', ':', 0.9)):
         ax.plot(t.age, t[q], color=c, ls=ls, lw=lw)
     # observed centiles in 5-year bins, to show the fit
-    g = ref[ref.sex == sex][['age', var]].dropna()
-    g = g.assign(b=(np.minimum(g.age, 89) // 5) * 5 + 2.5)
-    e = g.groupby('b')[var].quantile([0.03, 0.5, 0.97]).unstack()
+    e = observed_centiles(ref, var, sex)
+    assert e.index.min() >= 18 and e.index.max() <= 90
     for q in e.columns:
         ax.plot(e.index, e[q], 'o', ms=2.0, color=INK, alpha=0.55, mew=0)
     ax.set_xlim(18, 90); ax.set_xticks([20, 40, 60, 80])
@@ -256,20 +264,23 @@ def fig_recal():
     r = pd.read_csv(f"{OUT}/recalibration.csv", keep_default_na=False)
     V = ['nibp_map', 'nibp_sbp', 'nibp_dbp', 'hr', 'etco2', 'temp_c']
     Q = [3, 10, 50, 90, 97]
-    sty = {'None': ('o', INK, 'MOVER centiles as published'), 'Shift': ('s', '#2a78d6', 'Shifted by the median offset'),
-           'Shift and scale': ('^', '#eb6834', 'Shifted and rescaled')}
+    # shifted series drawn as open squares underneath, so the published points stay visible where they coincide
+    sty = {'Shift': ('s', '#2a78d6', 'Shifted by the median offset'), 'Shift and scale': ('^', '#eb6834', 'Shifted and rescaled'),
+           'None': ('o', INK, 'MOVER centiles as published')}
     fig, axs = plt.subplots(2, 3, figsize=(W, 4.9), sharex=True, sharey=True)
     for ax, v, L in zip(axs.flat, V, 'ABCDEF'):
         ax.plot([0, 100], [0, 100], color=INK2, lw=0.6, ls='--')
         for mth, (mk, c, lab) in sty.items():
             g = r[(r['var'] == v) & (r.method == mth)].iloc[0]
-            ax.plot(Q, [g[f'below_P{q}'] for q in Q], marker=mk, ms=3.2, color=c, lw=0.8, label=lab)
+            ax.plot(Q, [g[f'below_P{q}'] for q in Q], marker=mk, ms=4.6 if mth == 'Shift' else 3.0, color=c, lw=0.8,
+                    label=lab, mfc='white' if mth == 'Shift' else c, mew=0.9, zorder={'Shift': 2, 'Shift and scale': 3, 'None': 4}[mth])
         ax.set_title(TITLE[v], fontsize=9, pad=6); ax.set_xlim(0, 100); ax.set_ylim(0, 100)
         ax.set_xticks([0, 25, 50, 75, 100]); ax.set_yticks([0, 25, 50, 75, 100])
         tag(ax, L)
     for ax in axs[1]: ax.set_xlabel('Reference centile')
     for ax in axs[:, 0]: ax.set_ylabel('Patients below (%)')
     h, l = axs[0, 0].get_legend_handles_labels()
+    h, l = [h[2], h[0], h[1]], [l[2], l[0], l[1]]
     fig.legend(h, l, loc='lower center', ncol=3, frameon=False, fontsize=7.5, bbox_to_anchor=(0.5, -0.01))
     fig.tight_layout(w_pad=1.4, h_pad=1.4, rect=(0, 0.05, 1, 1))
     save(fig, 'figureS2')
