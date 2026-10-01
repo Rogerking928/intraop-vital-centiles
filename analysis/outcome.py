@@ -3,7 +3,7 @@
 族群：MOVER 可分析者（全部 ASA），有術前 30 天內肌酸酐、術後 7 天內至少一次肌酸酐，術前 Cr <4.0 mg/dL。
 AKI（KDIGO 肌酸酐標準）：術後 48 小時內最高值 ≥ 術前 +0.3 mg/dL，或 7 天內最高值 ≥ 術前 ×1.5。
 暴露（維持期 NIBP MAP，每筆讀值代表到下一筆的時間，上限 10 分鐘）：
-  低於 65 mmHg 的分鐘數；低於自己年齡×性別參考 P3、P10 的分鐘數；
+  低於 65 mmHg 的分鐘數；低於自己年齡×性別參考 P3、P10 的分鐘數（參考族群最低持續 5 分鐘 MAP 的分布）；
   另：病人的維持期 MAP 中位數，以 mmHg 表示 vs 以參考百分位表示。
 模型：logistic，校正年齡（樣條）、性別、ASA、術前 Cr、麻醉時長、住院類別；
 比較 AIC 與 AUC（加入暴露前後），bootstrap 200 次看 AUC 差的 CI。
@@ -50,9 +50,11 @@ flow['baseline_cr_lt4'] = len(d)
 d['aki'] = (((d.cr48 - d.cr0) >= 0.3) | (d.cr7 >= 1.5 * d.cr0)).astype(int)
 flow['aki'] = int(d.aki.sum())
 
-# ---- 參考閾值：參考族群的 P3／P10（每人一個數） ----
-ref = mv[mv.ref]
-models = fit_both(ref, 'nibp_map', [0.03, 0.10, 0.5])
+# ---- 參考閾值：參考族群「最低持續 5 分鐘 MAP」的 P3／P10（每人一個數） ----
+# 2026-10-01 審閱：原本用 case median 的百分位當單筆讀值的閾值，門檻太高（18–49 歲 66% 被標記，多於 65 mmHg）；
+# 讀值層級的閾值要用讀值層級的分布，與 Table 3／S15 的指標一致。
+ref = mv[mv.ref].merge(pd.read_parquet(f'{P}/out/readings_mover.parquet')[['LOG_ID', 'maint_sust5']], on='LOG_ID')
+models = fit_both(ref, 'maint_sust5', [0.03, 0.10, 0.5])
 for s, m in models.items():
     k = d.sex == s
     pr = predict(m, d.loc[k, 'age'].values)

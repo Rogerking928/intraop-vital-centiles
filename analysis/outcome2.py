@@ -153,6 +153,12 @@ res = pd.concat([res, compare(yw, 'aki', "aki ~ cr(age, df=3, constraints='cente
 dth['asa3'] = (dth.asa >= 3).astype(int)
 res = pd.concat([res, compare(dth, 'death', "death ~ age + C(sex) + asa3 + log_dur", 'In-hospital death, parsimonious model',
                               EXPO_LIN)])
+# 2026-10-01 審閱：% baseline 同時帶著術前 MAP 本身的資訊。把術前 MAP 當共變項，再看各尺度還有沒有增益。
+res = pd.concat([res,
+                 compare(dth, 'death', B_DTH + " + cr(base_map, df=3, constraints='center')",
+                         'In-hospital death, adjusted for pre-operative MAP'),
+                 compare(dth, 'death', "death ~ age + C(sex) + asa3 + log_dur + base_map",
+                         'In-hospital death, parsimonious model, adjusted for pre-operative MAP', EXPO_LIN)])
 res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.4f')
 
 # 被標記為低血壓的比例與其 AKI 發生率：絕對 <65、相對 <80% 基線、百分位 <P10（都用 lowest sustained 5 min）
