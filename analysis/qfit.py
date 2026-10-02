@@ -1,4 +1,5 @@
-"""Shared: sex-specific age-smoothed centiles (quantile regression + natural cubic spline, df=4); predictions are
+"""Shared: sex-specific age-smoothed centiles (quantile regression on a natural cubic regression spline of age, cr(df=4):
+four basis functions that, with the intercept, give three degrees of freedom for age); predictions are
 rearranged to prevent crossing."""
 import numpy as np, pandas as pd, patsy, warnings
 from statsmodels.regression.quantile_regression import QuantReg

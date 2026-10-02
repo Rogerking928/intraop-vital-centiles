@@ -1,6 +1,7 @@
 """Age x sex centile curves for the MOVER reference population (ASA I-II).
 
-Primary analysis: per-patient maintenance-phase median ~ sex-specific quantile regression (natural cubic spline, df=4).
+Primary analysis: per-patient maintenance-phase median ~ sex-specific quantile regression (natural cubic regression
+spline cr(df=4): four basis functions, three degrees of freedom for age beyond the intercept).
 Outputs
   out/norms_table.csv          every year of age 18-90, each sex, each variable, seven centiles (supplementary reference table)
   out/norms_ci.csv             P3/P50/P97 every 10 years with bootstrap 95% CI (200 resamples of patients)
