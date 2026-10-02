@@ -1,4 +1,4 @@
-"""VitalDB：麻醉期間（anestart–aneend）逐分鐘中位數，寫一個 parquet。"""
+"""VitalDB: per-minute medians during anaesthesia (anestart to aneend), written to a single parquet."""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))
@@ -19,7 +19,7 @@ def one(cid):
         names = [n for n in TR if n in vf.get_track_names()]
         if not names:
             return None
-        a = vf.to_numpy(names, 2)            # 每 2 秒一格，t=0 為 casestart
+        a = vf.to_numpy(names, 2)            # one sample every 2 s, t=0 at casestart
         df = pd.DataFrame(a, columns=[TR[n] for n in names])
         df['minute'] = (np.arange(len(df)) * 2) // 60
         s, e = cases.at[cid, 'anestart'], cases.at[cid, 'aneend']

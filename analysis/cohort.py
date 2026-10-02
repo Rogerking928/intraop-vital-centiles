@@ -1,11 +1,13 @@
-"""兩個資料庫各建一張「一人一列」的分析表，給 norms.py 與 validate.py 用。
+"""Build a one-row-per-patient analysis table for each database, used by norms.py and validate.py.
 
-MOVER：成人（18–90）、全身麻醉、麻醉 ≥60 分、每人第一台、排除心臟手術與心導管、開顱手術、懷孕相關手術。
-維持期＝麻醉開始 +15 分到麻醉結束 −15 分。監視器自動上傳那組（FLO_NAME='Devices Testing Template'）。
-NIBP 偽值規則照 de Graaff 2016：脈壓 ≤5、DBP>MAP、MAP>SBP、SBP ≥250 視為偽值（整組丟掉）。
-VitalDB：同樣條件；逐分鐘中位數來自 extract_vitaldb.py。
+MOVER: adults (18-90), general anaesthesia, anaesthesia >=60 min, first case per patient; excludes cardiac surgery and
+cardiac catheterisation, craniotomy, and pregnancy-related surgery.
+Maintenance phase = anaesthesia start +15 min to anaesthesia end -15 min. Uses the monitor auto-upload rows
+(FLO_NAME='Devices Testing Template').
+NIBP artefact rules follow de Graaff 2016: pulse pressure <=5, DBP>MAP, MAP>SBP or SBP >=250 is an artefact (whole set dropped).
+VitalDB: same criteria; per-minute medians come from extract_vitaldb.py.
 
-輸出 out/cohort_mover.parquet、out/cohort_vitaldb.parquet、out/cohort_flow.json
+Outputs out/cohort_mover.parquet, out/cohort_vitaldb.parquet, out/cohort_flow.json
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -21,7 +23,8 @@ con.execute("set memory_limit='4GB'; set threads=6")
 CARDIAC = ('CABG|CORONARY ARTERY BYPASS|VALVE|VALVULOPLASTY|CATHETERIZATION, HEART|HEART CATH|TAVR|LVAD|'
            'STERNOTOMY|OPEN HEART|ASCENDING AORTA|AORTIC ROOT|AORTIC ARCH|INTRA-AORTIC BALLOON|PROCUREMENT, HEART|'
            'TRANSPLANT, HEART|HEART TRANSPLANT|CARDIOPULMONARY BYPASS|PCI|CARDIAC ELECTROPHYSIOLOGY|ABLATION, CARDIAC')
-# 生命徵象刻意控制在非生理目標（開顱：過度換氣、血壓目標）或生理狀態不同（懷孕）的手術，也不當參考
+# Also not used as reference: surgery where vital signs are deliberately held at non-physiological targets
+# (craniotomy: hyperventilation, blood-pressure targets) or physiology differs (pregnancy)
 INTRACRANIAL = 'CRANIOTOMY|CRANIECTOMY|BURR HOLE|TRANSSPHENOIDAL|INTRACRANIAL'
 OBSTETRIC = 'CESAREAN|DILATION AND EVACUATION, UTERUS|ECTOPIC PREGNANCY|POSTPARTUM'
 
@@ -33,7 +36,7 @@ select LOG_ID, MRN, try_cast(BIRTH_DATE as int) age, SEX sex, PRIMARY_ANES_TYPE_
        try_strptime(AN_START_DATETIME, '%m/%d/%y %H:%M') an0, try_strptime(AN_STOP_DATETIME, '%m/%d/%y %H:%M') an1
 from read_csv_auto('{MX}/patient_information.csv', all_varchar=true)""").df()
 flow = {'records': len(pi), 'cases': int(pi.LOG_ID.nunique())}
-# 少數 LOG_ID（8 個）有互相矛盾的重複列；固定取麻醉開始時間最晚的一列，結果才可重現
+# A few LOG_IDs (8) have conflicting duplicate rows; always take the row with the latest anaesthesia start, for reproducibility
 pi = pi.sort_values(['LOG_ID', 'an0', 'MRN', 'an1', 'proc', 'asa'], ascending=[True, False, True, True, True, True],
                     kind='mergesort', na_position='last').drop_duplicates('LOG_ID')
 pi = pi[(pi.age >= 18) & (pi.anes == 'General') & pi.sex.isin(['Female', 'Male'])]
@@ -50,7 +53,7 @@ flow['non_cardiac'] = len(pi)
 pi['dur'] = (pi.an1 - pi.an0).dt.total_seconds() / 60
 pi = pi[pi.dur >= 60]
 flow['anes_ge_60min'] = len(pi)
-# 同一人同一開始時間的多筆紀錄：取 LOG_ID 最小者（固定規則）
+# Multiple records for the same patient and start time: take the smallest LOG_ID (fixed rule)
 pi = pi.sort_values(['MRN', 'an0', 'LOG_ID'], kind='mergesort').drop_duplicates('MRN')
 flow['first_case_per_patient'] = len(pi)
 
@@ -68,7 +71,7 @@ pi['bmi'] = pi.wt_kg / pi.ht_m ** 2
 pi.loc[(pi.bmi < 12) | (pi.bmi > 80), 'bmi'] = np.nan
 con.register('pi', pi[['LOG_ID', 'an0', 'an1']])
 
-# 維持期逐筆（NIBP 的 SBP/DBP/MAP 以同一時間戳配對）
+# Maintenance-phase readings (NIBP SBP/DBP/MAP paired by identical timestamp)
 con.execute(f"""
 create temp table v as
 select f.LOG_ID, f.item, f.t, f.v from '{P}/out/mover_intraop/*.parquet' f join pi using (LOG_ID)
@@ -102,7 +105,7 @@ where (item='Heart Rate' and x between 20 and 250) or (item='SpO2' and x between
    or (item='Temp' and x between 86 and 108)
 group by 1""").df()
 
-# 術中升壓劑：輸注（New Bag／Rate Change／Restarted）與推注（Given）
+# Intraoperative vasoactive drugs: infusions (New Bag/Rate Change/Restarted) and boluses (Given)
 va = con.execute(f"""
 select LOG_ID,
   max((regexp_matches(upper(MEDICATION_NM),'INFUSION|/250 ML|/100 ML') and MAR_ACTION_NM in ('New Bag','Rate Change','Restarted'))::int) vaso_inf,

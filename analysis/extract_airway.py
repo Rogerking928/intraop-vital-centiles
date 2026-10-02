@@ -1,12 +1,14 @@
-"""術中氣道器材（外部審閱 2026-10-02：EtCO2 P3 偏低，疑似混入未插管的鎮靜個案）。
-從 flowsheets_cleaned 抽 INTRA-OP 的 'O2 Device' 與 'Airway Device'，每個 LOG_ID 一列。輸出 out/mover_airway.parquet。"""
+"""Intraoperative airway or oxygen device from the MOVER flowsheets (added after external review, 2026-10-02, to
+examine whether cases with spontaneous ventilation or sedation recorded as general anaesthesia lower the end-tidal CO2
+centiles). Extracts INTRA-OP 'O2 Device' and 'Airway Device' entries. Output out/mover_airway_raw.parquet."""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))
 _VITALDB = _os.environ.get('VITALDB_DIR', _os.path.join(_PROJ, 'data', 'VitalDB'))
 import duckdb, glob, os
 FS = _os.path.join(_MOVER, 'flowsheets_cleaned')
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'out')
+P = _PROJ
+OUT = f'{P}/out'
 con = duckdb.connect(); con.execute("SET threads=4"); con.execute("SET memory_limit='6GB'")
 parts = []
 for f in sorted(glob.glob(f'{FS}/flowsheet_part*.csv')):

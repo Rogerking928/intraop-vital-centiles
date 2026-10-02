@@ -1,10 +1,11 @@
-"""讀值層級指標的參考百分位（參考族群 ASA I–II），回應「中位數與單筆讀值不能比」與「排除誘導期」：
-  maint_sust5：維持期持續 5 分鐘的最低 MAP；maint_twa：維持期時間加權平均 MAP；
-  full_median／full_sust5：含誘導期（整段麻醉）的中位數與持續 5 分鐘最低 MAP。
-輸出
-  out/norms2_table.csv      每一歲、每性別、四個指標的 P3–P97
-  out/norms2_dec.csv        每 10 歲 P3/P50/P97，並列主分析（維持期中位數）
-  out/threshold2.csv        65 mmHg 落在各指標分布的第幾百分位（年齡段中點）
+"""Reference centiles for reading-level metrics (reference population ASA I-II), addressing review comments that
+"a case median cannot be compared with single readings" and "induction is excluded":
+  maint_sust5: lowest 5-min sustained MAP in maintenance; maint_twa: time-weighted average MAP in maintenance;
+  full_median/full_sust5: median and lowest 5-min sustained MAP including induction (whole anaesthetic).
+Outputs
+  out/norms2_table.csv      P3-P97 for every year of age, each sex, the four metrics
+  out/norms2_dec.csv        P3/P50/P97 every 10 years, alongside the primary analysis (maintenance median)
+  out/threshold2.csv        centile of 65 mmHg in each metric's distribution (age-band midpoints)
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))

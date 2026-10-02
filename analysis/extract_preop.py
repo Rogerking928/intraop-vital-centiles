@@ -1,4 +1,5 @@
-"""MOVER flowsheets_cleaned → 術前血壓（PRE-OP 的 BP／MAP／NIBP）與術中吸入麻醉藥（ET 濃度項目），逐檔寫 parquet。"""
+"""MOVER flowsheets_cleaned -> pre-operative blood pressure (PRE-OP BP/MAP/NIBP) and intraoperative inhaled anaesthetics
+(end-tidal concentration items), one parquet per input file."""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))

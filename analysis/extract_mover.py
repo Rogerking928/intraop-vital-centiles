@@ -1,4 +1,4 @@
-"""從 MOVER flowsheets_cleaned 抽出術中生命徵象，逐檔寫 parquet（可重跑續做）。"""
+"""Extract intraoperative vital signs from MOVER flowsheets_cleaned, one parquet per input file (resumable)."""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))

@@ -1,13 +1,13 @@
-"""MOVER 參考族群（ASA I–II）的年齡×性別百分位曲線。
+"""Age x sex centile curves for the MOVER reference population (ASA I-II).
 
-主分析：每人維持期中位數 ~ 性別別分位數迴歸（自然三次樣條 df=4）。
-輸出
-  out/norms_table.csv          18–90 每一歲、每性別、每變數、七個分位（Supplementary 參考表）
-  out/norms_ci.csv             每 10 歲的 P3/P50/P97 與 bootstrap 95% CI（200 次，以病人重抽）
-  out/norms_cv.csv             5 折交叉驗證：留出的人落在各分位以下的比例（依年齡段）
-  out/norms_sensitivity.csv    換族群重估（全部 ASA、排除升壓劑輸注、只門診手術）P3/P50/P97
-  out/threshold.csv            MAP 55／60／65 mmHg 在各年齡段×性別落在第幾百分位＋實際低於 65 的比例
-  out/spo2_desc.csv            SpO2 描述（天花板效應，不做曲線）
+Primary analysis: per-patient maintenance-phase median ~ sex-specific quantile regression (natural cubic spline, df=4).
+Outputs
+  out/norms_table.csv          every year of age 18-90, each sex, each variable, seven centiles (supplementary reference table)
+  out/norms_ci.csv             P3/P50/P97 every 10 years with bootstrap 95% CI (200 resamples of patients)
+  out/norms_cv.csv             5-fold cross-validation: proportion of held-out patients below each centile (by age band)
+  out/norms_sensitivity.csv    P3/P50/P97 re-estimated in other populations (all ASA, excluding vasoactive infusions, outpatient surgery only)
+  out/threshold.csv            centile of MAP 55/60/65 mmHg by age band x sex, plus observed proportion below 65
+  out/spo2_desc.csv            SpO2 description (ceiling effect, no curves fitted)
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     ci = pt.join(ci)[['P3', 'P3_lo', 'P3_hi', 'P50', 'P50_lo', 'P50_hi', 'P97', 'P97_lo', 'P97_hi']]
     ci.to_csv(f'{P}/out/norms_ci.csv', float_format='%.12g')
 
-    # 5 折交叉驗證
+    # 5-fold cross-validation
     rng = np.random.default_rng(1)
     fold = rng.integers(0, 5, len(ref))
     ref['band'] = pd.cut(ref.age, BANDS, right=False, labels=BLAB)
@@ -82,8 +82,8 @@ if __name__ == '__main__':
             cv.append({'var': v, 'band': bnd, 'n': len(g), **{f'below_P{int(round(q*100))}': g[q].mean() for q in Q}})
     pd.DataFrame(cv).to_csv(f'{P}/out/norms_cv.csv', index=False, float_format='%.12g')
 
-    # 敏感度：換族群
-    # MOVER 的日期逐病人隨機位移（Samad 2023），所以不做分年份的敏感度分析
+    # Sensitivity: alternative populations
+    # MOVER dates are randomly shifted per patient (Samad 2023), so no sensitivity analysis by calendar year
     pops = {'Primary (ASA I-II)': mv.ref,
             'All ASA classes': mv.asa.notna(),
             'ASA I-II, no vasoactive infusion': mv.ref & (mv.vaso_inf == 0),
@@ -101,7 +101,7 @@ if __name__ == '__main__':
                                  'P3': pr.at[a, 0.03], 'P50': pr.at[a, 0.5], 'P97': pr.at[a, 0.97]})
     pd.DataFrame(sens).to_csv(f'{P}/out/norms_sensitivity.csv', index=False, float_format='%.12g')
 
-    # 固定門檻（55／60／65 mmHg）在各年齡段中點、各性別落在第幾百分位（密集分位網格反推）
+    # Centile of fixed thresholds (55/60/65 mmHg) at each age-band midpoint and sex (inverted from a dense centile grid)
     qs = [round(x, 3) for x in np.arange(0.005, 0.5001, 0.005)]
     dense = fit_both(ref, 'nibp_map', qs)
     MID = {'18-29': 24, '30-39': 35, '40-49': 45, '50-59': 55, '60-69': 65, '70-79': 75, '80-90': 85}

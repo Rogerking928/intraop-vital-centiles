@@ -1,8 +1,9 @@
-"""VitalDB 外部驗證：MOVER 參考曲線（ASA I–II）套到 VitalDB（ASA I–II、非急診）。
+"""VitalDB external validation: MOVER reference curves (ASA I-II) applied to VitalDB (ASA I-II, non-emergency).
 
-每個變數：落在 MOVER 同年齡×性別 P3/P10/P50/P90/P97 以下的比例（Wilson 95% CI），
-整體、分性別、分年齡段、分科別、排除升壓劑輸注、排除有動脈導管者（ART 訊號 ≤20 分鐘）；另報位置偏移（VitalDB 值減 MOVER P50 的中位數，bootstrap CI）。
-輸出 out/validation.csv、out/validation_shift.csv
+For each variable: proportion below the MOVER P3/P10/P50/P90/P97 for the same age x sex (Wilson 95% CI),
+overall, by sex, by age band, by department, excluding vasoactive infusions, and excluding patients with an arterial line
+(ART signal <=20 min kept); also reports location shift (median of VitalDB value minus MOVER P50, bootstrap CI).
+Outputs out/validation.csv, out/validation_shift.csv
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -21,7 +22,8 @@ mv = pd.read_parquet(f'{P}/out/cohort_mover.parquet')
 ref = mv[mv.ref]
 vd = pd.read_parquet(f'{P}/out/cohort_vitaldb.parquet')
 vd = vd[vd.ref].copy()
-# MOVER 年齡截在 90、參考曲線只到 90：VitalDB 也截在 90（原本 >90 的人被拿去比外推的百分位，且不在任何年齡層）
+# MOVER age is capped at 90 and the curves stop at 90, so VitalDB is capped at 90 too (previously patients >90 were
+# compared with extrapolated centiles and fell in no age band)
 vd['age'] = vd.age.clip(upper=90)
 for k in ['nibp_map', 'nibp_sbp', 'nibp_dbp']:
     vd.loc[vd.n_nibp < 3, k] = np.nan
@@ -46,7 +48,7 @@ for v in V:
             r[f'below_P{int(round(q*100))}'] = 100 * k / len(g)
             r[f'below_P{int(round(q*100))}_lo'], r[f'below_P{int(round(q*100))}_hi'] = 100 * lo, 100 * hi
         rows.append(r)
-    # 位置偏移
+    # Location shift
     d = vd[['age', 'sex', v, 'department']].dropna()
     p50 = pd.concat([predict(models[s], d[d.sex == s].age.values)[0.5].set_axis(d[d.sex == s].index) for s in models])
     res = d[v] - p50.loc[d.index]

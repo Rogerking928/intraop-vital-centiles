@@ -1,4 +1,5 @@
-"""Table 1：MOVER 參考族群、MOVER 全部可分析者、VitalDB 驗證族群的特徵。輸出 out/t1_characteristics.csv"""
+"""Table 1: characteristics of the MOVER reference population, all analysable MOVER patients, and the VitalDB validation
+population. Outputs out/t1_characteristics.csv"""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))
@@ -10,8 +11,8 @@ mv = pd.read_parquet(f'{P}/out/cohort_mover.parquet')
 vd = pd.read_parquet(f'{P}/out/cohort_vitaldb.parquet')
 for k in ['nibp_map', 'nibp_sbp', 'nibp_dbp']:
     vd.loc[vd.n_nibp < 3, k] = np.nan
-mv['has_art'] = mv.n_art.fillna(0) > 20        # MOVER：動脈導管讀值 >20 筆（約每分鐘一筆）
-vd['has_art'] = vd.n_art.fillna(0) > 20        # VitalDB：ART 訊號 >20 分鐘
+mv['has_art'] = mv.n_art.fillna(0) > 20        # MOVER: >20 arterial-line readings (about one per minute)
+vd['has_art'] = vd.n_art.fillna(0) > 20        # VitalDB: ART signal >20 min
 cols = {'MOVER reference (ASA I-II)': mv[mv.ref], 'MOVER, all ASA classes': mv[mv.asa.notna()],
         'VitalDB validation (ASA I-II, elective)': vd[vd.ref]}
 

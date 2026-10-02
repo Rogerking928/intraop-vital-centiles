@@ -1,11 +1,17 @@
-"""預後分析第二版（回應審閱）：同一個量——每人持續 5 分鐘的最低 MAP——用三種尺度表示，誰對結局的區辨力較好：
-   絕對值（mmHg）、相對術前基線（%）、年齡×性別參考百分位（參考族群的 lowest sustained 5-min 分布）。
-另加：含誘導期的低於 65 分鐘數、住院死亡、50 歲以下女性子群。
-結局：術後 AKI（KDIGO 肌酸酐，同 outcome.py 的族群）；住院死亡（出院去向 Expired，全部可分析者）。
-術前基線：PRE-OP 的 MAP（'MAP (mmHg)'、'NIBP - MAP'，或由 'BP'/'NIBP' 的收縮／舒張壓算）在麻醉開始前 6 小時內的中位數。
-每個模型：共變項（年齡樣條、性別、ASA、麻醉時長、住院類別；AKI 另加術前 Cr）＋一個暴露（自然三次樣條 df=3）。
-比較 AIC、AUC；bootstrap 200 次的 AUC 差（對絕對 mmHg）。只在三個尺度都算得出來的人上比，才公平。
-輸出 out/outcome2_models.csv、out/outcome2_flags.csv、out/outcome2.json
+"""Outcome analysis, second version (in response to review): the same quantity -- each patient's lowest 5-min sustained
+MAP -- expressed on three scales, to see which discriminates outcomes better:
+   absolute (mmHg), relative to pre-operative baseline (%), and age x sex reference centile (reference population's
+   lowest sustained 5-min distribution).
+Also: minutes below 65 including induction, in-hospital death, and the subgroup of women under 50.
+Outcomes: postoperative AKI (KDIGO creatinine, same population as outcome.py); in-hospital death (discharge disposition
+Expired, all analysable patients).
+Pre-operative baseline: median PRE-OP MAP ('MAP (mmHg)', 'NIBP - MAP', or computed from 'BP'/'NIBP' systolic/diastolic)
+within 6 h before anaesthesia start.
+Each model: covariates (age spline, sex, ASA, anaesthesia duration, admission type; plus pre-operative Cr for AKI) + one
+exposure (natural cubic spline, df=3).
+Compares AIC and AUC; AUC difference vs absolute mmHg from 200 bootstrap resamples. Compared only in patients for whom
+all three scales can be computed, so the comparison is fair.
+Outputs out/outcome2_models.csv, out/outcome2_flags.csv, out/outcome2.json
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -28,7 +34,7 @@ disp = con.execute(f"select LOG_ID, max(DISCH_DISP) disp from read_csv_auto('{MX
 mv['death'] = mv.LOG_ID.map(disp.set_index('LOG_ID').disp).eq('Expired').astype(int)
 con.register('pi', mv[['LOG_ID', 'an0', 'an1']])
 
-# ---- 術前基線 MAP
+# ---- Pre-operative baseline MAP
 pre = con.execute(f"""
 select p.LOG_ID, p.t, p.item, p.v from '{P}/out/mover_preop/*.parquet' p join pi using (LOG_ID)
 where p.rt='PRE-OP' and p.t < pi.an0 and p.t >= pi.an0 - interval 6 hour""").df()
@@ -49,7 +55,7 @@ pre['mp'] = pre.apply(to_map, axis=1)
 pre = pre[pre.mp.between(40, 180)]
 mv['base_map'] = mv.LOG_ID.map(pre.groupby('LOG_ID').mp.median())
 
-# ---- 參考百分位（lowest sustained 5 min）
+# ---- Reference centiles (lowest sustained 5 min)
 ref = mv[mv.ref]
 qs = [round(x, 3) for x in np.arange(0.005, 0.9951, 0.005)]
 dense = fit_both(ref, 'maint_sust5', qs)
@@ -60,14 +66,14 @@ for s, m in dense.items():
                                   for v, row in zip(mv.loc[k, 'maint_sust5'].values, pr)]
 mv['sust5_pct_base'] = 100 * mv.maint_sust5 / mv.base_map
 
-# ---- AKI 族群（同 outcome.py）
+# ---- AKI population (same as outcome.py)
 crl = con.execute(f"""
 select l.LOG_ID, try_strptime(l."Collection Datetime", '%Y-%m-%d %H:%M:%S') t, try_cast(l."Observation Value" as double) cr,
        pi.an0, pi.an1
 from read_csv_auto('{MX}/patient_labs.csv', all_varchar=true) l join pi using (LOG_ID)
 where l."Lab Code" in ('2160-0','38483-4')""").df()
 crl = crl[crl.cr.between(0.1, 20) & crl.t.notna()]
-# 同一時間兩筆時取較高者，結果才可重現（duckdb 回傳順序不固定）
+# When two values share a timestamp, take the higher one, for reproducibility (duckdb row order is not fixed)
 p0 = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values(['LOG_ID', 't', 'cr'], kind='mergesort').groupby('LOG_ID').cr.last()
 post = crl[crl.t >= crl.an1]
 p48 = post[post.t < post.an1 + pd.Timedelta(hours=48)].groupby('LOG_ID').cr.max()
@@ -136,24 +142,29 @@ dth = mv.dropna(subset=need).copy()
 flow.update({'aki_cohort': len(aki), 'aki_events': int(aki.aki.sum()), 'death_cohort': len(dth),
              'deaths': int(dth.death.sum())})
 B_AKI = "aki ~ cr(age, df=4, constraints='center') + C(sex) + C(asa_c) + cr0 + log_dur + inpatient"
-# 樣條一律置中（constraints='center'）：不置中時 cr() 與截距共線，df_model 會依數值容許誤差忽高忽低，AIC 跟著錯。
-# 死亡：ASA I 沒有死亡（ASA II 只有 2 例），ASA I 的係數發散、Hessian 奇異 → 死亡模型把 ASA I–II 併成一組
+# Splines are always centred (constraints='center'): uncentred cr() is collinear with the intercept, so df_model
+# varies with numerical tolerance and the AIC is wrong.
+# Death: no deaths in ASA I (only 2 in ASA II), so the ASA I coefficient diverges and the Hessian is singular ->
+# the death model merges ASA I-II into one group
 dth['asa_d'] = np.where(dth.asa <= 2, '1-2', dth.asa_c)
 flow['deaths_asa12'] = int(dth.death[dth.asa <= 2].sum()); flow['n_asa12_death_cohort'] = int((dth.asa <= 2).sum())
 B_DTH = "death ~ cr(age, df=4, constraints='center') + C(sex) + C(asa_d) + log_dur + inpatient"
 res = pd.concat([compare(aki, 'aki', B_AKI, 'Acute kidney injury'),
                  compare(dth, 'death', B_DTH, 'In-hospital death')])
-# 50 歲以下女性：門診只有十幾人且無 AKI（住院類別完全分離），模型不放 inpatient。AKI 事件太少時改用住院死亡以外的，只報 AKI
+# Women under 50: only a dozen or so outpatients and no AKI among them (complete separation by admission type), so
+# inpatient is left out of the model. Only AKI is reported for this subgroup.
 yw = aki[(aki.sex == 'Female') & (aki.age < 50)].copy()
 flow.update({'young_women_aki_cohort': len(yw), 'young_women_aki': int(yw.aki.sum()),
              'young_women_outpatient': int((yw.inpatient == 0).sum()), 'young_women_outpatient_aki': int(yw.aki[yw.inpatient == 0].sum())})
 res = pd.concat([res, compare(yw, 'aki', "aki ~ cr(age, df=3, constraints='center') + C(asa_c) + cr0 + log_dur",
                               'Acute kidney injury, women under 50')])
-# 死亡只有約 160 件：精簡模型（年齡線性、性別、ASA III 以上、麻醉時長；暴露線性）當敏感度分析
+# Only about 160 deaths: a parsimonious model (linear age, sex, ASA III or above, anaesthesia duration; linear exposure)
+# as a sensitivity analysis
 dth['asa3'] = (dth.asa >= 3).astype(int)
 res = pd.concat([res, compare(dth, 'death', "death ~ age + C(sex) + asa3 + log_dur", 'In-hospital death, parsimonious model',
                               EXPO_LIN)])
-# 2026-10-01 審閱：% baseline 同時帶著術前 MAP 本身的資訊。把術前 MAP 當共變項，再看各尺度還有沒有增益。
+# (revision 2026-10-01: % baseline also carries information from the pre-operative MAP itself. Add pre-operative MAP as
+# a covariate and check whether each scale still adds anything.)
 res = pd.concat([res,
                  compare(dth, 'death', B_DTH + " + cr(base_map, df=3, constraints='center')",
                          'In-hospital death, adjusted for pre-operative MAP'),
@@ -161,7 +172,8 @@ res = pd.concat([res,
                          'In-hospital death, parsimonious model, adjusted for pre-operative MAP', EXPO_LIN),
                  compare(aki, 'aki', B_AKI + " + cr(base_map, df=3, constraints='center')",
                          'Acute kidney injury, adjusted for pre-operative MAP')])
-# 術前 MAP 本身與死亡的方向（審閱：低術前血壓是否代表病情較重）
+# Direction of association between pre-operative MAP itself and death (review: whether low pre-operative pressure
+# indicates sicker patients)
 mb = smf.logit("death ~ age + C(sex) + asa3 + log_dur + I(base_map / 10)", dth).fit(disp=0)
 k = 'I(base_map / 10)'
 flow['death_or_per10_base_map'] = float(np.exp(mb.params[k]))
@@ -173,7 +185,8 @@ bq['pct'] = 100 * bq.deaths / bq.n
 bq.to_csv(f'{P}/out/outcome2_baseline_quartiles.csv', float_format='%.12g')
 res.to_csv(f'{P}/out/outcome2_models.csv', index=False, float_format='%.12g')
 
-# 被標記為低血壓的比例與其 AKI 發生率：絕對 <65、相對 <80% 基線、百分位 <P10（都用 lowest sustained 5 min）
+# Proportion flagged as hypotensive and their AKI incidence: absolute <65, relative <80% of baseline, centile <P10
+# (all on lowest sustained 5 min)
 fl = []
 for name, g in (('All', aki), ('Women under 50', yw), ('Men 70 and over', aki[(aki.sex == 'Male') & (aki.age >= 70)])):
     for lab, mask in (('Below 65 mmHg', g.maint_sust5 < 65), ('Below 80% of baseline', g.sust5_pct_base < 80),

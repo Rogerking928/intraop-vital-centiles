@@ -1,5 +1,6 @@
-"""Supplementary_Calculator.html：單一離線 HTML，內嵌 norms_table.csv（參考族群 ASA I–II 的每歲百分位）。
-輸入性別、年齡、變數與數值 → 在該年齡×性別的七個百分位之間線性內插出百分位，並列出 P3–P97。"""
+"""Supplementary_Calculator.html: a single offline HTML page embedding norms_table.csv (the centiles for every year of
+age in the ASA I-II reference cohort). Given sex, age, variable and value, it interpolates the centile linearly between
+the seven centiles for that age and sex and lists P3-P97."""
 import os, json, pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 t = pd.read_csv(f"{ROOT}/out/norms_table.csv")
@@ -23,7 +24,7 @@ select,input{width:100%;box-sizing:border-box;padding:8px;border:1px solid var(-
 table{width:100%;border-collapse:collapse;margin-top:12px;font-size:.9rem}td,th{padding:4px 6px;text-align:center;border-bottom:1px solid var(--line)}
 </style></head><body><main>
 <h1>Centiles of vital signs during general anaesthesia</h1>
-<p class="note">Reference: adults with ASA physical status I-II, patient median over the maintenance phase of general anaesthesia (15 min after induction to 15 min before the end), MOVER, University of California, Irvine. Non-invasive pressures. Heart-rate and end-tidal CO2 centiles were miscalibrated in an external Korean cohort and should be recalibrated locally. These centiles describe usual practice; they are not thresholds for harm and must not replace clinical judgement.</p>
+<p class="note">Reference: adults with ASA physical status I-II, patient median over the maintenance phase of general anaesthesia (15 min after the start of anaesthesia to 15 min before the end), MOVER, University of California, Irvine. Non-invasive pressures. Heart-rate and end-tidal CO2 centiles were miscalibrated in an external Korean cohort and should be recalibrated locally. These centiles describe usual practice; they are not thresholds for harm and must not replace clinical judgement.</p>
 <div class="grid">
 <div><label for="sex">Sex</label><select id="sex"><option>Female</option><option>Male</option></select></div>
 <div><label for="age">Age (18-90 years)</label><input id="age" type="number" min="18" max="90" value="30"></div>

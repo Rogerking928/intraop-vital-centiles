@@ -1,4 +1,4 @@
-"""Figures at print width (174 mm), PNG at 700 dpi. House style of the asthma / Enterococcus papers:
+"""Figures at print width (174 mm), PNG at 700 dpi. Style:
 DejaVu Sans, 9 pt text, 8.5 pt ticks, ink #1f2933, blue-grey axes, no grid lines.
 Reads out/*.csv and out/*.parquet written by analysis/*.py; fails if any two text boxes overlap."""
 import os, sys, json

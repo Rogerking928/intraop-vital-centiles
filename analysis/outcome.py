@@ -1,13 +1,16 @@
-"""術後急性腎損傷（AKI）：固定 65 mmHg vs 年齡×性別參考百分位當低血壓閾值。
+"""Postoperative acute kidney injury (AKI): fixed 65 mmHg vs age x sex reference centiles as the hypotension threshold.
 
-族群：MOVER 可分析者（全部 ASA），有術前 30 天內肌酸酐、術後 7 天內至少一次肌酸酐，術前 Cr <4.0 mg/dL。
-AKI（KDIGO 肌酸酐標準）：術後 48 小時內最高值 ≥ 術前 +0.3 mg/dL，或 7 天內最高值 ≥ 術前 ×1.5。
-暴露（維持期 NIBP MAP，每筆讀值代表到下一筆的時間，上限 10 分鐘）：
-  低於 65 mmHg 的分鐘數；低於自己年齡×性別參考 P3、P10 的分鐘數（參考族群最低持續 5 分鐘 MAP 的分布）；
-  另：病人的維持期 MAP 中位數，以 mmHg 表示 vs 以參考百分位表示。
-模型：logistic，校正年齡（樣條）、性別、ASA、術前 Cr、麻醉時長、住院類別；
-比較 AIC 與 AUC（加入暴露前後），bootstrap 200 次看 AUC 差的 CI。
-輸出 out/outcome.json、out/outcome_models.csv、out/outcome_dose.csv
+Population: analysable MOVER patients (all ASA) with a creatinine within 30 days before surgery, at least one within
+7 days after, and pre-operative Cr <4.0 mg/dL.
+AKI (KDIGO creatinine criteria): maximum within 48 h after surgery >= pre-operative +0.3 mg/dL, or maximum within
+7 days >= 1.5 x pre-operative.
+Exposures (maintenance-phase NIBP MAP; each reading lasts until the next, capped at 10 min):
+  minutes below 65 mmHg; minutes below the patient's own age x sex reference P3 and P10 (distribution of the reference
+  population's lowest 5-min sustained MAP);
+  also: the patient's maintenance-phase median MAP, expressed in mmHg vs as a reference centile.
+Models: logistic, adjusted for age (spline), sex, ASA, pre-operative Cr, anaesthesia duration, admission type;
+compares AIC and AUC (before and after adding the exposure); 200 bootstrap resamples for the CI of the AUC difference.
+Outputs out/outcome.json, out/outcome_models.csv, out/outcome_dose.csv
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -29,14 +32,14 @@ mv = pd.read_parquet(f'{P}/out/cohort_mover.parquet')
 mv = mv[mv.asa.notna()].copy()
 con.register('pi', mv[['LOG_ID', 'an0', 'an1']])
 
-# ---- 肌酸酐（血清／全血） ----
+# ---- Creatinine (serum/whole blood) ----
 crl = con.execute(f"""
 select l.LOG_ID, try_strptime(l."Collection Datetime", '%Y-%m-%d %H:%M:%S') t, try_cast(l."Observation Value" as double) cr,
        pi.an0, pi.an1
 from read_csv_auto('{MX}/patient_labs.csv', all_varchar=true) l join pi using (LOG_ID)
 where l."Lab Code" in ('2160-0','38483-4')""").df()
 crl = crl[crl.cr.between(0.1, 20) & crl.t.notna()]
-# 同一時間兩筆時取較高者，結果才可重現
+# When two values share a timestamp, take the higher one, for reproducibility
 pre = crl[(crl.t < crl.an0) & (crl.t >= crl.an0 - pd.Timedelta(days=30))].sort_values(['LOG_ID', 't', 'cr'], kind='mergesort').groupby('LOG_ID').cr.last()
 post = crl[crl.t >= crl.an1]
 p48 = post[post.t < post.an1 + pd.Timedelta(hours=48)].groupby('LOG_ID').cr.max()
@@ -50,9 +53,10 @@ flow['baseline_cr_lt4'] = len(d)
 d['aki'] = (((d.cr48 - d.cr0) >= 0.3) | (d.cr7 >= 1.5 * d.cr0)).astype(int)
 flow['aki'] = int(d.aki.sum())
 
-# ---- 參考閾值：參考族群「最低持續 5 分鐘 MAP」的 P3／P10（每人一個數） ----
-# 2026-10-01 審閱：原本用 case median 的百分位當單筆讀值的閾值，門檻太高（18–49 歲 66% 被標記，多於 65 mmHg）；
-# 讀值層級的閾值要用讀值層級的分布，與 Table 3／S16 的指標一致。
+# ---- Reference thresholds: P3/P10 of the reference population's lowest 5-min sustained MAP (one value per patient) ----
+# (revision 2026-10-01: centiles of the case median were previously used as thresholds for single readings, which set
+# them too high (66% of patients aged 18-49 flagged, more than with 65 mmHg); reading-level thresholds must come from a
+# reading-level distribution, consistent with the metrics in Table 3/S16.)
 ref = mv[mv.ref].merge(pd.read_parquet(f'{P}/out/readings_mover.parquet')[['LOG_ID', 'maint_sust5']], on='LOG_ID')
 models = fit_both(ref, 'maint_sust5', [0.03, 0.10, 0.5])
 for s, m in models.items():
@@ -60,7 +64,7 @@ for s, m in models.items():
     pr = predict(m, d.loc[k, 'age'].values)
     d.loc[k, 'thr_p3'] = pr[0.03].values
     d.loc[k, 'thr_p10'] = pr[0.10].values
-    # 病人自己 MAP 中位數的參考百分位（用 0.5% 格點反推）
+    # Reference centile of the patient's own median MAP (inverted on a 0.5% grid)
 qs = [round(x, 3) for x in np.arange(0.005, 0.9951, 0.005)]
 dense = fit_both(ref, 'nibp_map', qs)
 for s, m in dense.items():
@@ -69,7 +73,7 @@ for s, m in dense.items():
     x = d.loc[k, 'nibp_map'].values
     d.loc[k, 'map_centile'] = [100 * np.interp(v, row, qs, left=0.0, right=1.0) for v, row in zip(x, pr)]
 
-# ---- 維持期 NIBP 讀值與低於閾值的分鐘數 ----
+# ---- Maintenance-phase NIBP readings and minutes below threshold ----
 con.register('dd', d[['LOG_ID', 'an0', 'an1', 'thr_p3', 'thr_p10']])
 exp = con.execute(f"""
 with r as (
@@ -124,7 +128,7 @@ for name, e in EXPO.items():
 res = pd.DataFrame(rows)
 res['delta_aic_vs_65'] = res.aic - res.set_index('exposure').at['Minutes below 65 mmHg', 'aic']
 
-# bootstrap：同一批人，每個暴露的 AUC 減去「低於 65」的 AUC
+# bootstrap: same patients; AUC of each exposure minus the AUC of "below 65"
 rng = np.random.default_rng(11)
 bs = {k: [] for k in EXPO}
 for b in range(200):
@@ -142,7 +146,7 @@ res['dauc_lo'] = [np.nanpercentile(bs[k], 2.5) for k in res.exposure]
 res['dauc_hi'] = [np.nanpercentile(bs[k], 97.5) for k in res.exposure]
 res.to_csv(f'{P}/out/outcome_models.csv', index=False, float_format='%.12g')
 
-# 劑量反應：暴露分鐘數分組的 AKI 發生率（未校正）
+# Dose-response: AKI incidence by grouped exposure minutes (unadjusted)
 dose = []
 for c, lab in [('min_lt65', 'Below 65 mmHg'), ('min_ltp3', 'Below own P3'), ('min_ltp10', 'Below own P10')]:
     g = pd.cut(d[c], [-0.1, 0, 5, 15, 30, np.inf], labels=['0', '>0-5', '>5-15', '>15-30', '>30'])
@@ -154,7 +158,7 @@ dose = pd.concat(dose)
 dose['rate'] *= 100
 dose.to_csv(f'{P}/out/outcome_dose.csv', index=False, float_format='%.12g')
 
-# 年齡層：同樣 0 分鐘 vs 有暴露，看 65 與 P10 誰在年輕人／老人各抓到誰
+# Age bands: same 0 min vs any exposure; which patients 65 mmHg and P10 each flag in younger vs older patients
 d['band'] = pd.cut(d.age, [18, 50, 70, 91], right=False, labels=['18-49', '50-69', '70-90'])
 by = d.groupby('band', observed=True).apply(lambda g: pd.Series({
     'n': len(g), 'aki_pct': 100 * g.aki.mean(),

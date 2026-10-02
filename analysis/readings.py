@@ -1,11 +1,12 @@
-"""逐筆 NIBP 讀值 → 每人的讀值層級指標，兩個時窗：
-  maint：麻醉開始 +15 分到結束 −15 分（主分析時窗）
-  full ：麻醉開始到結束（含誘導期）
-指標：中位數、時間加權平均（TWA，每筆讀值算到下一筆、上限 10 分鐘）、
-      持續 5 分鐘的最低 MAP（相鄰讀值涵蓋 ≥5 分鐘時，該段內的最高值；取全程最小）＝ lowest sustained MAP、
-      單筆最低 MAP、低於 65 的分鐘數。
-每筆讀值的時長一律在整段麻醉的序列上算（到下一筆、上限 10 分鐘），兩個時窗才一致。
-輸出 out/readings_mover.parquet（每人一列，兩個時窗各一組欄位）。
+"""Individual NIBP readings -> per-patient reading-level metrics, in two windows:
+  maint: anaesthesia start +15 min to end -15 min (primary analysis window)
+  full : anaesthesia start to end (including induction)
+Metrics: median; time-weighted average (TWA; each reading lasts until the next, capped at 10 min);
+      lowest MAP sustained for 5 min (for consecutive readings spanning >=5 min, the highest value within that span;
+      minimum over the case) = lowest sustained MAP; lowest single MAP; minutes below 65.
+Reading durations are always computed on the full-anaesthesia series (until the next reading, capped at 10 min),
+so the two windows are consistent.
+Outputs out/readings_mover.parquet (one row per patient, one set of columns per window).
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))

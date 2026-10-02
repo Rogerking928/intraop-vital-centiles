@@ -18,9 +18,12 @@ external validation, heart rate and end-tidal CO2 centiles were miscalibrated an
   `centiles_other_summaries.csv` (time-weighted average, lowest sustained 5-minute MAP, whole anaesthesia).
   These are aggregate model outputs; no patient-level data are included.
 - `analysis/` - the complete analysis, in the order it is run:
-  `extract_mover.py`, `extract_vitaldb.py`, `extract_preop.py`, `cohort.py`, `norms.py`, `validate.py`,
-  `describe.py`, `readings.py`, `norms2.py`, `revision.py`, `outcome.py`, `outcome2.py`, `gamlss_fit.R`,
-  `gamlss_compare.py` (`qfit.py` holds the shared quantile-regression code).
+  `extract_mover.py`, `extract_vitaldb.py`, `extract_preop.py`, `extract_meds.py`, `cohort.py`, `norms.py`,
+  `validate.py`, `describe.py`, `readings.py`, `norms2.py`, `revision.py`, `outcome.py`, `outcome2.py`,
+  `gamlss_input.py`, `gamlss_fit.R`, `gamlss_compare.py`, then the checks added after external review:
+  `readings_gapcheck.py`, `extract_airway.py`, `airway_check.py` (`qfit.py` holds the shared quantile-regression code). Run Python scripts with `OPENBLAS_NUM_THREADS=1`; `qfit.py` also limits BLAS to one thread
+  through threadpoolctl, without which quantile regression on tied (integer) data can differ by 0.1 between runs.
+- `docs/index.html` - the calculator page (built by `figures/make_calculator.py`).
 - `figures/figs.py` - the figures; `figures/make_calculator.py` - builds the calculator page.
 
 ## Data
@@ -31,7 +34,7 @@ optionally, `PROJECT_DIR` (where intermediate files are written, default the rep
 
 ## Software
 
-Python 3.12 with DuckDB, pandas, statsmodels, patsy, scikit-learn, vitaldb and matplotlib; R 4.4 with gamlss.
+Python 3.12.3; exact package versions in `requirements.txt`. R 4.4.3 with gamlss 5.5.0.
 
 The analysis was written and run by the author in Python 3, with Claude (Anthropic) and ChatGPT (OpenAI) used as
 assistants under the author's direction; the author reviewed and tested all code and takes full responsibility for

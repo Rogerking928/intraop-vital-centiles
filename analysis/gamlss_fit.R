@@ -1,9 +1,11 @@
 # GAMLSS sensitivity analysis for the reference centiles (as in de Graaff 2016 / WHO growth standards):
 # for each variable and sex, fit BCCG, BCPE and BCT with P-splines of age in mu, sigma, nu (tau constant),
 # keep the family with the lowest BIC, and predict the 3rd, 50th and 97th centiles at 20, 30, ..., 90 years.
-# Input out/ref_for_gamlss.csv (written from cohort_mover.parquet, ASA I-II); output out/gamlss_centiles.csv.
+# Input out/ref_for_gamlss.csv (written by gamlss_input.py); output out/gamlss_centiles.csv and out/gamlss_fit.csv,
+# under PROJECT_DIR (default: the current directory).
 suppressMessages(library(gamlss))
-d0 <- read.csv("out/ref_for_gamlss.csv")
+P <- Sys.getenv("PROJECT_DIR", ".")
+d0 <- read.csv(file.path(P, "out", "ref_for_gamlss.csv"))
 vars <- c("nibp_map", "nibp_sbp", "nibp_dbp", "hr", "etco2", "temp_c")
 ages <- seq(20, 90, 10)
 out <- list(); sel <- list()
@@ -26,5 +28,5 @@ for (v in vars) for (s in c("Female", "Male")) {
                                    below_P3 = mean(d$y < z[, 2]), below_P50 = mean(d$y < z[, 3]), below_P97 = mean(d$y < z[, 4]))
   cat(v, s, fam_best, "\n")
 }
-write.csv(do.call(rbind, out), "out/gamlss_centiles.csv", row.names = FALSE)
-write.csv(do.call(rbind, sel), "out/gamlss_fit.csv", row.names = FALSE)
+write.csv(do.call(rbind, out), file.path(P, "out", "gamlss_centiles.csv"), row.names = FALSE)
+write.csv(do.call(rbind, sel), file.path(P, "out", "gamlss_fit.csv"), row.names = FALSE)

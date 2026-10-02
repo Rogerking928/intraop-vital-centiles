@@ -1,5 +1,6 @@
-"""GAMLSS（R，gamlss_fit.R）與主分析分位數迴歸的比較：20／50／80 歲的 P3、P50、P97，
-以及兩種方法在參考族群內落在 P3 以下、P97 以下的比例（同樣是樣本內）。輸出 out/gamlss_compare.csv"""
+"""Compare GAMLSS (R, gamlss_fit.R) with the primary quantile-regression analysis: P3, P50, P97 at ages 20/50/80,
+and the proportion of the reference population below P3 and below P97 under each method (both in-sample).
+Outputs out/gamlss_compare.csv"""
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _MOVER = _os.environ.get('MOVER_DIR', _os.path.join(_PROJ, 'data', 'MOVER'))

@@ -1,10 +1,11 @@
-"""回應外部審閱（2026-09-30）的補充分析。
- A. 沒用任何升壓劑者的完整百分位表（次要參考）         → out/norms_table_nodrug.csv
- B. rearrangement 之前分位數曲線有沒有交叉               → out/crossing.json
- C. VitalDB 再校正示範：一半估偏移（與尺度），另一半驗證   → out/recalibration.csv
- D. VitalDB 分層：手術方式、TIVA、BMI 三分位、呼吸道      → out/validation_strata2.csv
- E. MOVER 共變項：BMI、腹腔鏡／機器手臂、丙泊酚輸注（TIVA）對 P3／P50／P97 的影響 → out/covariates_qr.csv
- F. 沒用升壓劑女性 EtCO2 低尾的來源：只看麻醉 ≥120 分  → out/etco2_nodrug_check.csv
+"""Supplementary analyses in response to external review (2026-09-30).
+ A. Full centile table for patients given no vasoactive drug (secondary reference)  -> out/norms_table_nodrug.csv
+ B. Whether centile curves cross before rearrangement                              -> out/crossing.json
+ C. VitalDB recalibration demo: estimate shift (and scale) in one half, validate in the other -> out/recalibration.csv
+ D. VitalDB strata: surgical approach, TIVA, BMI tertile, airway                    -> out/validation_strata2.csv
+ E. MOVER covariates: effect of BMI, laparoscopic/robotic surgery, propofol infusion (TIVA) on P3/P50/P97
+                                                                                    -> out/covariates_qr.csv
+ F. Source of the low EtCO2 tail in women given no vasoactive drug: anaesthesia >=120 min only -> out/etco2_nodrug_check.csv
 """
 import os as _os
 _PROJ = _os.environ.get('PROJECT_DIR', _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -34,7 +35,7 @@ for v in V:
             rows.append({'var': v, 'sex': s, 'age': int(a), **{f'P{int(round(q*100))}': pr.at[a, q] for q in pr.columns}})
 pd.DataFrame(rows).to_csv(f'{P}/out/norms_table_nodrug.csv', index=False, float_format='%.12g')
 
-# ---- B：未排序的預測有沒有交叉
+# ---- B: do unsorted predictions cross
 cross = {}
 for v in V:
     for s in ('Female', 'Male'):
@@ -45,10 +46,10 @@ for v in V:
 json.dump({'ages_with_crossing_before_rearrangement': cross, 'ages_checked': int(len(AGES))},
           open(f'{P}/out/crossing.json', 'w'), indent=1)
 
-# ---- C：再校正
+# ---- C: recalibration
 vd = pd.read_parquet(f'{P}/out/cohort_vitaldb.parquet')
 vd = vd[vd.ref].copy()
-vd['age'] = vd.age.clip(upper=90)   # 同 validate.py：MOVER 年齡截在 90
+vd['age'] = vd.age.clip(upper=90)   # as in validate.py: MOVER age is capped at 90
 for k in ['nibp_map', 'nibp_sbp', 'nibp_dbp']:
     vd.loc[vd.n_nibp < 3, k] = np.nan
 rng = np.random.default_rng(3)
@@ -62,7 +63,7 @@ for v in V:
     resid = d[v] - pr[0.5]
     A, B = d.half == 0, d.half == 1
     shift = float(np.median(resid[A]))
-    # 尺度：VitalDB-A 的 P10–P90 殘差寬度 ÷ MOVER 在同樣年齡×性別的 P10–P90 寬度（平均）
+    # Scale: P10-P90 residual width in VitalDB-A / MOVER P10-P90 width at the same age x sex (mean)
     k = float((np.quantile(resid[A], 0.9) - np.quantile(resid[A], 0.1)) / (pr.loc[A, 0.9] - pr.loc[A, 0.1]).mean())
     for method in ('None', 'Shift', 'Shift and scale'):
         r = {'var': v, 'method': method, 'n_estimate': int(A.sum()), 'n_test': int(B.sum()),
@@ -76,7 +77,7 @@ for v in V:
         rec.append(r)
 pd.DataFrame(rec).to_csv(f'{P}/out/recalibration.csv', index=False, float_format='%.12g')
 
-# ---- D：VitalDB 分層
+# ---- D: VitalDB strata
 vc = pd.read_csv(f'{VD}/cases.csv').set_index('caseid')
 trk = pd.read_csv(f'{VD}/trks.csv')
 tiva_ids = set(trk[trk.tname == 'Orchestra/PPF20_RATE'].caseid)
@@ -98,7 +99,7 @@ for v in ['nibp_map', 'hr', 'etco2']:
                        'below_P50': 100 * float(hit.loc[g.index, 0.5].mean()), 'median_shift': float(np.median(res[g.index]))})
 pd.DataFrame(st).to_csv(f'{P}/out/validation_strata2.csv', index=False, float_format='%.12g')
 
-# ---- E：MOVER 共變項
+# ---- E: MOVER covariates
 con = duckdb.connect()
 ppf = con.execute(f"""select distinct LOG_ID from '{P}/out/mover_propofol_intraop.parquet'
                       where regexp_matches(upper(MEDICATION_NM),'INFUSION|/100 ?ML|/50 ?ML') and MAR_ACTION_NM in ('New Bag','Rate Change','Restarted')""").df()
